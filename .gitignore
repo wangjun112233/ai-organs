@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+organ_data/
+organ_data_fc/
+*.log
+.env
+.DS_Store
