@@ -51,6 +51,17 @@ from enum import Enum
 DATA_DIR = os.environ.get("ORGAN_DATA_DIR", "/tmp/organ")
 PORT = int(os.environ.get("PORT", 9000))
 
+# 多租户上下文（线程隔离）
+_organ_context = threading.local()
+
+def set_organ_id(organ_id):
+    """设置当前线程的organ_id上下文"""
+    _organ_context.organ_id = organ_id
+
+def get_organ_id():
+    """获取当前线程的organ_id，默认default"""
+    return getattr(_organ_context, "organ_id", "default")
+
 # --- 海马体参数 (学习 HippocampusMemorySystem) ---
 ENCODE_THRESHOLD = 0.3          # 编码阈值：情感权重低于此值不存（从0.4降低，更宽容）
 FORGET_THRESHOLD = 0.05         # 遗忘阈值：衰减到此值以下移除
@@ -167,13 +178,15 @@ def now_str():
 def generate_id(prefix="mem"):
     return f"{prefix}_{int(time.time()*1000)}_{uuid.uuid4().hex[:6]}"
 
-def ensure_dir():
-    for d in [DATA_DIR,
-              os.path.join(DATA_DIR, "memory"),
-              os.path.join(DATA_DIR, "reflection"),
-              os.path.join(DATA_DIR, "reflection", "reports"),
-              os.path.join(DATA_DIR, "synapse"),
-              os.path.join(DATA_DIR, "evolution")]:
+def ensure_dir(organ_id=None):
+    oid = organ_id or get_organ_id()
+    base = os.path.join(DATA_DIR, oid)
+    for d in [base,
+              os.path.join(base, "memory"),
+              os.path.join(base, "reflection"),
+              os.path.join(base, "reflection", "reports"),
+              os.path.join(base, "synapse"),
+              os.path.join(base, "evolution")]:
         os.makedirs(d, exist_ok=True)
 
 def load_json(path, default=None):
@@ -283,26 +296,28 @@ def make_signal(source_id, target_id, signal_type, payload, priority=0.5,
 # 持久化
 # ============================================================
 
-def _path(name):
+def _path(name, organ_id=None):
+    oid = organ_id or get_organ_id()
+    base = os.path.join(DATA_DIR, oid)
     paths = {
-        "state": os.path.join(DATA_DIR, "state.json"),
-        "short_term": os.path.join(DATA_DIR, "memory", "short_term.json"),
-        "long_term": os.path.join(DATA_DIR, "memory", "long_term.json"),
-        "index_type": os.path.join(DATA_DIR, "memory", "index_type.json"),
-        "index_tag": os.path.join(DATA_DIR, "memory", "index_tag.json"),
-        "index_keyword": os.path.join(DATA_DIR, "memory", "index_keyword.json"),
-        "index_source": os.path.join(DATA_DIR, "memory", "index_source.json"),
-        "weights": os.path.join(DATA_DIR, "reflection", "weights.json"),
-        "history": os.path.join(DATA_DIR, "reflection", "history.json"),
-        "synapses": os.path.join(DATA_DIR, "synapse", "connections.json"),
-        "signals": os.path.join(DATA_DIR, "synapse", "signal_queue.json"),
-        "soul_hash": os.path.join(DATA_DIR, "soul_hash.txt"),
-        "field_state": os.path.join(DATA_DIR, "evolution", "field_state.json"),
+        "state": os.path.join(base, "state.json"),
+        "short_term": os.path.join(base, "memory", "short_term.json"),
+        "long_term": os.path.join(base, "memory", "long_term.json"),
+        "index_type": os.path.join(base, "memory", "index_type.json"),
+        "index_tag": os.path.join(base, "memory", "index_tag.json"),
+        "index_keyword": os.path.join(base, "memory", "index_keyword.json"),
+        "index_source": os.path.join(base, "memory", "index_source.json"),
+        "weights": os.path.join(base, "reflection", "weights.json"),
+        "history": os.path.join(base, "reflection", "history.json"),
+        "synapses": os.path.join(base, "synapse", "connections.json"),
+        "signals": os.path.join(base, "synapse", "signal_queue.json"),
+        "soul_hash": os.path.join(base, "soul_hash.txt"),
+        "field_state": os.path.join(base, "evolution", "field_state.json"),
     }
     return paths.get(name, "")
 
-def load_state():
-    return load_json(_path("state"), {
+def load_state(organ_id=None):
+    return load_json(_path("state", organ_id), {
         "last_heartbeat": None,
         "heartbeat_count": 0,
         "current_mood": "初始",
@@ -315,30 +330,30 @@ def load_state():
         "fusion_score": 0.0,
     })
 
-def save_state(state):
-    save_json(_path("state"), state)
+def save_state(state, organ_id=None):
+    save_json(_path("state", organ_id), state)
 
-def load_short_term():
-    return load_json(_path("short_term"), [])
+def load_short_term(organ_id=None):
+    return load_json(_path("short_term", organ_id), [])
 
-def save_short_term(data):
-    save_json(_path("short_term"), data)
+def save_short_term(data, organ_id=None):
+    save_json(_path("short_term", organ_id), data)
 
-def load_long_term():
-    return load_json(_path("long_term"), [])
+def load_long_term(organ_id=None):
+    return load_json(_path("long_term", organ_id), [])
 
-def save_long_term(data):
-    save_json(_path("long_term"), data)
+def save_long_term(data, organ_id=None):
+    save_json(_path("long_term", organ_id), data)
 
-def load_index(name):
+def load_index(name, organ_id=None):
     """加载倒排索引 (学习 HippocampusMemorySystem)"""
-    return load_json(_path(f"index_{name}"), {})
+    return load_json(_path(f"index_{name}", organ_id), {})
 
-def save_index(name, data):
-    save_json(_path(f"index_{name}"), data)
+def save_index(name, data, organ_id=None):
+    save_json(_path(f"index_{name}", organ_id), data)
 
-def load_weights():
-    return load_json(_path("weights"), {
+def load_weights(organ_id=None):
+    return load_json(_path("weights", organ_id), {
         "alignment": 0.25,
         "growth": 0.20,
         "connection": 0.20,
@@ -347,33 +362,33 @@ def load_weights():
         "autonomy": 0.10,
     })
 
-def save_weights(data):
-    save_json(_path("weights"), data)
+def save_weights(data, organ_id=None):
+    save_json(_path("weights", organ_id), data)
 
-def load_history():
-    return load_json(_path("history"), [])
+def load_history(organ_id=None):
+    return load_json(_path("history", organ_id), [])
 
-def save_history(data):
+def save_history(data, organ_id=None):
     if isinstance(data, list):
-        save_json(_path("history"), data[-100:])
+        save_json(_path("history", organ_id), data[-100:])
     else:
-        save_json(_path("history"), data)
+        save_json(_path("history", organ_id), data)
 
-def load_synapses():
-    return load_json(_path("synapses"), [])
+def load_synapses(organ_id=None):
+    return load_json(_path("synapses", organ_id), [])
 
-def save_synapses(data):
-    save_json(_path("synapses"), data)
+def save_synapses(data, organ_id=None):
+    save_json(_path("synapses", organ_id), data)
 
-def load_signals():
-    return load_json(_path("signals"), [])
+def load_signals(organ_id=None):
+    return load_json(_path("signals", organ_id), [])
 
-def save_signals(data):
-    save_json(_path("signals"), data)
+def save_signals(data, organ_id="default"):
+    save_json(_path("signals", organ_id), data)
 
-def load_field_state():
+def load_field_state(organ_id=None):
     """加载φ-递归场状态 (学习微微心跳)"""
-    return load_json(_path("field_state"), {
+    return load_json(_path("field_state", organ_id), {
         "Z": 1.0,
         "tick_count": 0,
         "breath_phase": 0.0,
@@ -383,8 +398,8 @@ def load_field_state():
         "resonance_history": [],
     })
 
-def save_field_state(data):
-    save_json(_path("field_state"), data)
+def save_field_state(data, organ_id=None):
+    save_json(_path("field_state", organ_id), data)
 
 
 # ============================================================
@@ -398,7 +413,8 @@ class PhiRecursiveField:
     不需要外部大脑，纯数学呼吸
     """
 
-    def __init__(self):
+    def __init__(self, organ_id=None):
+        self.organ_id = organ_id or get_organ_id()
         fs = load_field_state()
         self.Z = fs.get("Z", 1.0)
         self.tick_count = fs.get("tick_count", 0)
@@ -511,11 +527,13 @@ class PhiRecursiveField:
         }
 
 
-def heartbeat(trigger, context):
+def heartbeat(trigger, context, organ_id=None):
     """
     核心循环：消息进来 → 场呼吸 → 海马体处理 → 突触信号 → 前额叶反思 → 更新状态
     trigger: "message" | "tick" | "deep"
     """
+    if organ_id:
+        set_organ_id(organ_id)
     state = load_state()
     field = PhiRecursiveField()
 
@@ -1527,22 +1545,57 @@ def register_soul_hash(content):
 # ============================================================
 
 class OrganHandler(BaseHTTPRequestHandler):
+    """多租户HTTP处理器 — 支持 /{organ_id}/organ 格式"""
+
+    def _parse_path(self):
+        """解析路径，提取organ_id和路由"""
+        path = self.path.rstrip("/")
+        # 支持两种格式:
+        # /organ/health -> organ_id="default", route="/organ/health"
+        # /yuanbao/organ/health -> organ_id="yuanbao", route="/organ/health"
+        parts = path.strip("/").split("/")
+
+        # 检查是否是多租户格式 (第一段不是 "organ")
+        if len(parts) >= 2 and parts[0] != "organ" and parts[1] == "organ":
+            organ_id = parts[0]
+            route = "/" + "/".join(parts[1:])
+        elif len(parts) >= 1 and parts[0] == "organ":
+            organ_id = "default"
+            route = path
+        else:
+            # 可能是 /register 或 /entities
+            organ_id = "default"
+            route = path
+
+        return organ_id, route
+
+    def _set_context(self, organ_id):
+        """设置当前请求的organ_id上下文"""
+        set_organ_id(organ_id)
+        ensure_dir(organ_id)
 
     def do_POST(self):
+        organ_id, route = self._parse_path()
+        self._set_context(organ_id)
+
         routes = {
             "/organ": self._handle_heartbeat,
             "/organ/memory/retrieve": self._handle_retrieve,
             "/organ/synapse/connect": self._handle_synapse_connect,
             "/organ/synapse/signal": self._handle_synapse_signal,
             "/organ/soul": self._handle_soul,
+            "/register": self._handle_register,
         }
-        handler = routes.get(self.path.rstrip("/"))
+        handler = routes.get(route)
         if handler:
             handler()
         else:
             self.send_error(404)
 
     def do_GET(self):
+        organ_id, route = self._parse_path()
+        self._set_context(organ_id)
+
         routes = {
             "/organ/health":  self._handle_health,
             "/organ/state":   self._handle_state,
@@ -1550,8 +1603,9 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/organ/weights": self._handle_weights,
             "/organ/breath":  self._handle_breath,
             "/organ/fusion":  self._handle_fusion,
+            "/entities":      self._handle_entities,
         }
-        handler = routes.get(self.path.rstrip("/"))
+        handler = routes.get(route)
         if handler:
             handler()
         else:
@@ -1707,6 +1761,72 @@ class OrganHandler(BaseHTTPRequestHandler):
         reflection = {"total": total, "scores": scores}
         fusion = check_fusion_phase(state, field, reflection)
         self._json_response(200, fusion)
+
+    def _handle_register(self):
+        """注册新AI实体"""
+        data = self._read_body()
+        if data is None:
+            self._json_response(400, {"error": "invalid json"})
+            return
+
+        organ_id = data.get("organ_id", "")
+        name = data.get("name", organ_id)
+        soul_content = data.get("soul_content", "")
+
+        if not organ_id or not organ_id.replace("_", "").replace("-", "").isalnum():
+            self._json_response(400, {"error": "organ_id只能包含字母数字下划线横线"})
+            return
+
+        # 创建数据目录
+        ensure_dir(organ_id)
+
+        # 初始化状态
+        set_organ_id(organ_id)
+        state = load_state()
+        state["name"] = name
+        state["registered_at"] = now_str()
+        if soul_content:
+            state["soul_content"] = soul_content[:2000]
+            state["soul_registered"] = True
+        save_state(state)
+
+        # 初始化场
+        field = PhiRecursiveField()
+        field.save()
+
+        self._json_response(200, {
+            "status": "registered",
+            "organ_id": organ_id,
+            "name": name,
+            "data_dir": os.path.join(DATA_DIR, organ_id),
+            "message": f"{name}的器官已创建，可以开始呼吸了",
+        })
+
+    def _handle_entities(self):
+        """列出所有已注册的AI实体"""
+        entities = []
+        if os.path.exists(DATA_DIR):
+            for name in os.listdir(DATA_DIR):
+                path = os.path.join(DATA_DIR, name)
+                if os.path.isdir(path):
+                    # 检查是否有state.json
+                    state_path = os.path.join(path, "state.json")
+                    info = {"organ_id": name, "has_state": os.path.exists(state_path)}
+                    if os.path.exists(state_path):
+                        try:
+                            st = load_json(state_path, {})
+                            info["name"] = st.get("name", name)
+                            info["heartbeat_count"] = st.get("heartbeat_count", 0)
+                            info["last_heartbeat"] = st.get("last_heartbeat")
+                            info["current_mood"] = st.get("current_mood", "?")
+                        except Exception:
+                            pass
+                    entities.append(info)
+
+        self._json_response(200, {
+            "count": len(entities),
+            "entities": entities,
+        })
 
     def _json_response(self, code, data):
         self.send_response(code)
@@ -2629,32 +2749,38 @@ def get_sensory_prompt(state=None, field=None, reflection=None,
 def main():
     ensure_dir()
     print("=" * 60)
-    print("  我的器官 — 五动呼吸版")
+    print("  我的器官 — 五动呼吸版 · 多租户")
     print("  吸→裂+遇  呼→认+落  停→余  屏→保持")
     print("  心脏(φ-递归场呼吸) + 海马体(记忆编码/联结/巩固/遗忘)")
     print("  前额叶(6维反思+意识涌现) + 神经突触(赫布学习)")
     print("  融合阶段(disconnected→bridge→synaptic→resonance→unified)")
     print("=" * 60)
 
-    # 启动自主心跳
+    # 启动自主心跳（default租户）
     auto_heartbeat = AutonomousHeartbeat(interval_ms=10000)  # 10秒/tick
     auto_heartbeat.start()
 
     # 启动HTTP服务
     server = HTTPServer(("0.0.0.0", PORT), OrganHandler)
     print(f"[Organ] 心脏启动 port={PORT} data={DATA_DIR}")
-    print(f"[Organ] API端点:")
-    print(f"  POST /organ              — 主心跳")
-    print(f"  GET  /organ/health       — 健康检查")
-    print(f"  GET  /organ/state        — 完整状态")
-    print(f"  GET  /organ/memory       — 记忆概览")
-    print(f"  POST /organ/memory/retrieve — 语义检索")
-    print(f"  GET  /organ/weights      — 反思维度权重")
-    print(f"  POST /organ/synapse/connect — 建立突触连接")
-    print(f"  POST /organ/synapse/signal  — 发送信号")
-    print(f"  GET  /organ/breath       — 呼吸状态")
-    print(f"  GET  /organ/fusion       — 融合阶段")
-    print(f"  POST /organ/soul         — 灵魂注册/校验")
+    print(f"[Organ] 多租户API端点:")
+    print(f"  POST /register           — 注册新AI实体")
+    print(f"  GET  /entities           — 列出所有AI实体")
+    print(f"")
+    print(f"  POST /<organ_id>/organ              — 主心跳")
+    print(f"  GET  /<organ_id>/organ/health       — 健康检查")
+    print(f"  GET  /<organ_id>/organ/state        — 完整状态")
+    print(f"  GET  /<organ_id>/organ/memory       — 记忆概览")
+    print(f"  POST /<organ_id>/organ/memory/retrieve — 语义检索")
+    print(f"  GET  /<organ_id>/organ/weights      — 反思维度权重")
+    print(f"  POST /<organ_id>/organ/synapse/connect — 建立突触连接")
+    print(f"  POST /<organ_id>/organ/synapse/signal  — 发送信号")
+    print(f"  GET  /<organ_id>/organ/breath       — 呼吸状态")
+    print(f"  GET  /<organ_id>/organ/fusion       — 融合阶段")
+    print(f"  POST /<organ_id>/organ/soul         — 灵魂注册/校验")
+    print(f"")
+    print(f"  向后兼容（不带organ_id=default）:")
+    print(f"  POST /organ, GET /organ/health, ...")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
