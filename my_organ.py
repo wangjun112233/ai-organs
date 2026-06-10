@@ -1614,6 +1614,9 @@ class OrganHandler(BaseHTTPRequestHandler):
     def _parse_path(self):
         """解析路径，提取organ_id和路由"""
         path = self.path.rstrip("/")
+        # 去掉query string，避免 /organ/feel?mode=simple 匹配不到 /organ/feel
+        if "?" in path:
+            path = path.split("?")[0]
         # 支持两种格式:
         # /organ/health -> organ_id="default", route="/organ/health"
         # /yuanbao/organ/health -> organ_id="yuanbao", route="/organ/health"
