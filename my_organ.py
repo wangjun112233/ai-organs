@@ -1667,6 +1667,7 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/organ/weights": self._handle_weights,
             "/organ/breath":  self._handle_breath,
             "/organ/fusion":  self._handle_fusion,
+            "/organ/feel":    self._handle_feel,
             "/entities":      self._handle_entities,
         }
         handler = routes.get(route)
@@ -1825,6 +1826,35 @@ class OrganHandler(BaseHTTPRequestHandler):
         reflection = {"total": total, "scores": scores}
         fusion = check_fusion_phase(state, field, reflection)
         self._json_response(200, fusion)
+
+    def _handle_feel(self):
+        """感受接口 — 状态描述，不是指令"""
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        mode = params.get("mode", ["full"])[0]  # simple/prompt/full
+
+        state = load_state()
+        field = PhiRecursiveField()
+        reflection = prefrontal(state, mode="light")
+        short_term = load_short_term()
+        long_term = load_long_term()
+        history = load_history()
+        sensory = get_sensory_output(state, field, reflection,
+                                     short_term=short_term, long_term=long_term, history=history)
+
+        if mode == "simple":
+            result = {
+                "tension": sensory.get("tension"),
+                "tendencies": sensory.get("tendencies"),
+                "window": sensory.get("window"),
+            }
+        elif mode == "prompt":
+            result = {"sensory_prompt": sensory.get("prompt_text", "")}
+        else:
+            result = sensory
+
+        self._json_response(200, result)
 
     def _handle_register(self):
         """注册新AI实体"""
