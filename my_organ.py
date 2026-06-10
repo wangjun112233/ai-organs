@@ -1959,6 +1959,8 @@ class AutonomousHeartbeat:
             self.control_params = ControlParams.from_dict(cp_data) if cp_data else ControlParams()
         except Exception:
             self.control_params = ControlParams()
+        # 内化互视队列：保留最近5步的感受摘要向量
+        self.sensory_window = deque(maxlen=5)
 
     def start(self):
         self._running = True
@@ -2168,6 +2170,25 @@ class AutonomousHeartbeat:
         state["last_sensory"] = get_sensory_output(state, field, reflection,
                                                     short_term=short_term, long_term=long_term,
                                                     history=hist)
+
+        # 内化互视：跟2步前的自己比较，微调裂阈值
+        try:
+            current_feeling = state.get("last_sensory")
+            if current_feeling is not None:
+                current_vec = _sensory.get_summary_vector(current_feeling)
+                self.sensory_window.append(current_vec)
+                if len(self.sensory_window) >= 3:
+                    past_vec = self.sensory_window[-3]   # 两步前的自己
+                    # 过去张力更高 → 现在更放松 → 更愿意裂
+                    if past_vec[0] > current_vec[0]:
+                        new_cp.lie_threshold = max(0.5, new_cp.lie_threshold * 0.98)
+                    else:  # 过去张力更低 → 现在更紧 → 更保守
+                        new_cp.lie_threshold = min(1.5, new_cp.lie_threshold * 1.02)
+                    # 更新已持久化的control_params
+                    state["control_params"] = new_cp.to_dict()
+                    self.control_params = new_cp
+        except Exception as e:
+            print(f"[内化互视] 异常: {e}")
 
     # ── 屏息：保持 + 微调 ──
     def _hold(self, field, state, cp, phi_mod, _preloaded=None):
@@ -2448,6 +2469,18 @@ class SensoryOutput:
             self._feeling_history = self._feeling_history[-100:]
 
         return feelings
+
+    def get_summary_vector(self, feelings=None):
+        """返回8维感受摘要: [张力, φ活力, e活力, π活力, λ活力, √e活力, i活力, γ活力]"""
+        if feelings is None:
+            feelings = self._last_feeling
+        if not feelings:
+            return [0.0] * 8
+        tension = feelings.get("tension", {}).get("raw", 0.0)
+        fields = feelings.get("fields", {})
+        order = ["phi", "e", "pi", "lambda", "sqrt_e", "i_phase", "gamma"]
+        vib = [fields.get(k, {}).get("velocity", 0.0) for k in order]
+        return [tension] + vib
 
     def to_prompt_text(self, feelings=None):
         """
