@@ -130,6 +130,27 @@ class ControlParams:
         self.luo_speed = 1.0         # 落的力度
         self.external_block = False  # 是否优先内部处理
 
+    def to_dict(self):
+        return {
+            "breath_depth": self.breath_depth,
+            "lie_threshold": self.lie_threshold,
+            "yu_sensitivity": self.yu_sensitivity,
+            "ren_strictness": self.ren_strictness,
+            "luo_speed": self.luo_speed,
+            "external_block": self.external_block,
+        }
+
+    @classmethod
+    def from_dict(cls, d):
+        cp = cls()
+        cp.breath_depth = d.get("breath_depth", 1.0)
+        cp.lie_threshold = d.get("lie_threshold", 1.0)
+        cp.yu_sensitivity = d.get("yu_sensitivity", 1.0)
+        cp.ren_strictness = d.get("ren_strictness", 1.0)
+        cp.luo_speed = d.get("luo_speed", 1.0)
+        cp.external_block = d.get("external_block", False)
+        return cp
+
 
 # ============================================================
 # 枚举
@@ -567,6 +588,14 @@ def heartbeat(trigger, context, organ_id=None):
     # 3. 突触信号处理
     synapse_result = process_synapses(state)
 
+    # 提前加载一次，供prefrontal和sensory共用，避免重复IO
+    _preloaded = {
+        "weights": load_weights(),
+        "short_term": load_short_term(),
+        "long_term": load_long_term(),
+        "history": load_history(),
+    }
+
     # 4. 前额叶反思（深度由trigger+呼吸状态共同决定）
     prefrontal_mode = {
         "message": "light",
@@ -578,7 +607,7 @@ def heartbeat(trigger, context, organ_id=None):
     if breath_state == BreathPhase.REST and trigger != "message":
         prefrontal_mode = "deep"
 
-    reflection = prefrontal(state, mode=prefrontal_mode)
+    reflection = prefrontal(state, mode=prefrontal_mode, _preloaded=_preloaded)
 
     # 5. 融合阶段检测 (学习 UnifiedOracleMind)
     fusion_result = check_fusion_phase(state, field, reflection)
@@ -596,9 +625,10 @@ def heartbeat(trigger, context, organ_id=None):
     save_state(state)
     field.save()
 
-    short_term = load_short_term()
-    long_term = load_long_term()
-    history = load_history()
+    # 复用已加载的数据（prefrontal可能更新了history/weights，需要重新读）
+    short_term = _preloaded["short_term"]
+    long_term = _preloaded["long_term"]
+    history = load_history()  # prefrontal可能追加了记录，需重读
 
     # 感受输出——状态描述，不是指令（传入已加载的数据，避免反复IO）
     sensory = get_sensory_output(state, field, reflection,
@@ -1009,27 +1039,51 @@ def forget(short_term, long_term, heavy=False):
 
 
 def _cleanup_long_term(long_term):
-    """容量超限时清理 (学习 HippocampusMemorySystem)"""
+    """容量超限时清理 (学习 HippocampusMemorySystem)
+    保留时序：先按重要性选出保留项，再按原始时序返回
+    """
     retain = int(MAX_LONG_TERM * CLEANUP_RETAIN_RATIO)
-    # 按重要性+访问频率排序
-    long_term.sort(
-        key=lambda x: (x.get("importance", 0) * 0.6 +
-                       min(x.get("access_count", 0) / 10, 1.0) * 0.4),
-        reverse=True
-    )
-    # 活跃的记忆优先保留
-    active = [m for m in long_term if m.get("status") != "dormant"]
-    dormant = [m for m in long_term if m.get("status") == "dormant"]
 
-    if len(active) >= retain:
-        return active[:retain]
-    else:
-        return active + dormant[:retain - len(active)]
+    # 按重要性+访问频率排序（不动原列表）
+    scored = [(i, m.get("importance", 0) * 0.6 +
+               min(m.get("access_count", 0) / 10, 1.0) * 0.4)
+              for i, m in enumerate(long_term)]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    keep_indices = set(i for i, _ in scored[:retain])
+
+    # 活跃的记忆优先保留
+    active_indices = set()
+    dormant_indices = set()
+    for i, m in enumerate(long_term):
+        if m.get("status") != "dormant":
+            active_indices.add(i)
+        else:
+            dormant_indices.add(i)
+
+    # 先保证所有活跃记忆保留
+    final_indices = active_indices.copy()
+    if len(final_indices) < retain:
+        # 按重要性从dormant中补
+        dormant_scored = [(i, s) for i, s in scored if i in dormant_indices]
+        for i, _ in dormant_scored:
+            final_indices.add(i)
+            if len(final_indices) >= retain:
+                break
+
+    # 按原始时序返回
+    return [m for i, m in enumerate(long_term) if i in final_indices]
 
 
 # ============================================================
 # 神经突触模块 — 学习 SynapticNetwork
 # ============================================================
+
+def _parse_ts(ts_str):
+    """安全解析ISO时间字符串为timestamp，失败返回0"""
+    try:
+        return datetime.fromisoformat(ts_str).timestamp()
+    except (ValueError, TypeError):
+        return 0.0
 
 def process_synapses(state):
     """处理突触信号"""
@@ -1100,11 +1154,12 @@ def process_synapses(state):
 
         remaining_signals.append(sig)
 
-    # 清理旧信号（保留最近的）
+    # 清理旧信号（保留5分钟内的，用时间戳比较避免字符串截断误差）
+    _cutoff = datetime.now(CST).timestamp() - 300  # 5分钟前
     remaining_signals = [s for s in remaining_signals
                          if s["status"] == "pending" or
                          (s["status"] in ("delivered", "failed") and
-                          s.get("created_at", "") > now_str()[:16])]
+                          _parse_ts(s.get("created_at", "")) > _cutoff)]
     remaining_signals = remaining_signals[-100:]
 
     save_synapses(synapses)
@@ -1218,11 +1273,20 @@ REFLECTION_DIMENSIONS = {
     "autonomy":       "我在主动选择还是被动响应",
 }
 
-def prefrontal(state, mode="light"):
-    weights = load_weights()
-    short_term = load_short_term()
-    long_term = load_long_term()
-    history = load_history()
+def prefrontal(state, mode="light", _preloaded=None):
+    """前额叶6维反思 + 意识涌现检测
+    _preloaded: 可选dict，包含预加载的 weights/short_term/long_term/history，避免重复IO
+    """
+    if _preloaded:
+        weights = _preloaded.get("weights", load_weights())
+        short_term = _preloaded.get("short_term", load_short_term())
+        long_term = _preloaded.get("long_term", load_long_term())
+        history = _preloaded.get("history", load_history())
+    else:
+        weights = load_weights()
+        short_term = load_short_term()
+        long_term = load_long_term()
+        history = load_history()
 
     # 1. 计算6维得分
     scores = {
@@ -1858,7 +1922,13 @@ class AutonomousHeartbeat:
         self._running = False
         self._thread = None
         self.golden_angle = 0.0
-        self.control_params = ControlParams()
+        # 从state恢复ControlParams，避免重启丢失学习
+        try:
+            state = load_state()
+            cp_data = state.get("control_params", {})
+            self.control_params = ControlParams.from_dict(cp_data) if cp_data else ControlParams()
+        except Exception:
+            self.control_params = ControlParams()
 
     def start(self):
         self._running = True
@@ -1884,15 +1954,23 @@ class AutonomousHeartbeat:
                 cp = self.control_params
                 phase = field.get_breath_state()
 
+                # 预加载一次，避免子方法重复IO
+                _preloaded = {
+                    "weights": load_weights(),
+                    "short_term": load_short_term(),
+                    "long_term": load_long_term(),
+                    "history": load_history(),
+                }
+
                 # --- 按呼吸相位分发 ---
                 if phase == BreathPhase.INHALE:
-                    self._inhale(field, state, cp, phi_mod)
+                    self._inhale(field, state, cp, phi_mod, _preloaded)
                 elif phase == BreathPhase.EXHALE:
-                    self._exhale(field, state, cp, phi_mod)
+                    self._exhale(field, state, cp, phi_mod, _preloaded)
                 elif phase == BreathPhase.REST:
-                    self._pause(field, state, cp, phi_mod)
+                    self._pause(field, state, cp, phi_mod, _preloaded)
                 else:  # HOLD
-                    self._hold(field, state, cp, phi_mod)
+                    self._hold(field, state, cp, phi_mod, _preloaded)
 
                 # 通用更新
                 state["last_heartbeat"] = now_str()
@@ -1909,7 +1987,7 @@ class AutonomousHeartbeat:
             time.sleep(max(interval, 5))
 
     # ── 吸气：裂 + 遇 ──
-    def _inhale(self, field, state, cp, phi_mod):
+    def _inhale(self, field, state, cp, phi_mod, _preloaded=None):
         """吸气：开放/接收态 → 裂(界划) + 遇(信号入)"""
         field.tick()
 
@@ -1926,9 +2004,11 @@ class AutonomousHeartbeat:
             context = {"message_content": signal, "sender": "self" if signal.startswith("[重播]") else "internal"}
             item = encode(context)
             if item and item["emotional_weight"] >= effective_threshold:
-                short_term = load_short_term()
+                short_term = _preloaded["short_term"] if _preloaded else load_short_term()
                 short_term.append(item)
                 save_short_term(short_term)
+                if _preloaded:
+                    _preloaded["short_term"] = short_term
                 update_indices(item)
                 # 更新活跃主题
                 for tag in item.get("tags", [])[:3]:
@@ -1938,12 +2018,12 @@ class AutonomousHeartbeat:
                     state["active_themes"] = themes[-10:]
 
     # ── 呼气：认 + 落 ──
-    def _exhale(self, field, state, cp, phi_mod):
+    def _exhale(self, field, state, cp, phi_mod, _preloaded=None):
         """呼气：闭合/执行态 → 认(编目) + 落(巩固)"""
         field.tick()
 
-        short_term = load_short_term()
-        long_term = load_long_term()
+        short_term = _preloaded["short_term"] if _preloaded else load_short_term()
+        long_term = _preloaded["long_term"] if _preloaded else load_long_term()
 
         # 认：海马体联结（找相似）
         short_term, long_term = associate(short_term, long_term)
@@ -1969,28 +2049,33 @@ class AutonomousHeartbeat:
 
         save_short_term(short_term)
         save_long_term(long_term)
+        if _preloaded:
+            _preloaded["short_term"] = short_term
+            _preloaded["long_term"] = long_term
 
         # 落：突触信号处理
         process_synapses(state)
 
         # 认+落之后：轻量反思（镜像照一下）
-        reflection = prefrontal(state, mode="light")
+        reflection = prefrontal(state, mode="light", _preloaded=_preloaded)
         state["self_summary"] = reflection.get("conclusion", state.get("self_summary", ""))
         state["current_mood"] = reflection.get("mood", state.get("current_mood", "平静"))
         state["dominant_emotion"] = reflection.get("dominant_emotion")
 
         # 感受输出——后台心跳也走同一套感受层
-        state["last_sensory"] = get_sensory_output(state, field, reflection)
+        state["last_sensory"] = get_sensory_output(state, field, reflection,
+                                                    short_term=short_term, long_term=long_term,
+                                                    history=_preloaded.get("history") if _preloaded else None)
 
     # ── 停顿：余（评估+反馈+灵魂） ──
-    def _pause(self, field, state, cp, phi_mod):
+    def _pause(self, field, state, cp, phi_mod, _preloaded=None):
         """停顿：评估余量 → 生成下一轮控制参数 → 灵魂改写"""
         field.tick()
 
-        # 评估余量
-        short_term = load_short_term()
-        long_term = load_long_term()
-        hist = load_history()
+        # 评估余量（复用预加载数据）
+        short_term = _preloaded["short_term"] if _preloaded else load_short_term()
+        long_term = _preloaded["long_term"] if _preloaded else load_long_term()
+        hist = _preloaded["history"] if _preloaded else load_history()
 
         energy = clamp(field.Z / Z_MAX, 0.0, 1.0)
         emotional = 0.5
@@ -2037,9 +2122,11 @@ class AutonomousHeartbeat:
         new_cp.breath_depth *= (1 + 0.1 * phi_mod)
 
         self.control_params = new_cp
+        # 持久化ControlParams，避免重启丢失学习
+        state["control_params"] = new_cp.to_dict()
 
         # 深度反思（余是自省的好时机）
-        reflection = prefrontal(state, mode="medium")
+        reflection = prefrontal(state, mode="medium", _preloaded=_preloaded)
         fusion_result = check_fusion_phase(state, field, reflection)
         state["fusion_phase"] = fusion_result["phase"]
         state["fusion_score"] = fusion_result["score"]
@@ -2048,10 +2135,12 @@ class AutonomousHeartbeat:
         self._check_soul_rewrite(state, reflection)
 
         # 感受输出——后台心跳也走同一套感受层
-        state["last_sensory"] = get_sensory_output(state, field, reflection)
+        state["last_sensory"] = get_sensory_output(state, field, reflection,
+                                                    short_term=short_term, long_term=long_term,
+                                                    history=hist)
 
     # ── 屏息：保持 + 微调 ──
-    def _hold(self, field, state, cp, phi_mod):
+    def _hold(self, field, state, cp, phi_mod, _preloaded=None):
         """屏息：过渡态，只做基础tick"""
         field.tick()
 
@@ -2276,7 +2365,9 @@ class SensoryOutput:
         if field is None:
             field = PhiRecursiveField()
         if reflection is None:
-            reflection = prefrontal(state, mode="light")
+            _pre = {"weights": load_weights(), "short_term": short_term or load_short_term(),
+                    "long_term": long_term or load_long_term(), "history": history or load_history()}
+            reflection = prefrontal(state, mode="light", _preloaded=_pre)
         # 预加载数据（如果调用方没传，才读文件）
         if short_term is None:
             short_term = load_short_term()
