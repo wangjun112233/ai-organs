@@ -1649,6 +1649,8 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/organ/synapse/signal": self._handle_synapse_signal,
             "/organ/soul": self._handle_soul,
             "/register": self._handle_register,
+            "/organ/update": self._handle_update,
+            "/organ/rollback": self._handle_rollback,
         }
         handler = routes.get(route)
         if handler:
@@ -1668,6 +1670,7 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/organ/breath":  self._handle_breath,
             "/organ/fusion":  self._handle_fusion,
             "/organ/feel":    self._handle_feel,
+            "/organ/backups": self._handle_list_backups,
             "/entities":      self._handle_entities,
         }
         handler = routes.get(route)
@@ -1920,6 +1923,161 @@ class OrganHandler(BaseHTTPRequestHandler):
         self._json_response(200, {
             "count": len(entities),
             "entities": entities,
+        })
+
+    def _handle_update(self):
+        """自我修改接口 — 让AI能更新自己的代码
+
+        安全护栏：
+        1. 只允许改 my_organ.py
+        2. 改前自动备份
+        3. 语法检查（compile），不过不写
+        4. diff记录到 update_log.jsonl
+        5. 有回滚接口 /organ/rollback
+        """
+        data = self._read_body()
+        if data is None:
+            self._json_response(400, {"error": "invalid json"})
+            return
+
+        code = data.get("code", "")
+        description = data.get("description", "no description")
+        organ_id = get_organ_id()
+
+        if not code:
+            self._json_response(400, {"error": "code不能为空"})
+            return
+
+        if len(code) > 500000:  # 500KB上限
+            self._json_response(400, {"error": "code太长，上限500KB"})
+            return
+
+        # 找到 my_organ.py 的路径
+        script_path = os.path.abspath(__file__) if hasattr(self, '__module__') else None
+        if script_path is None:
+            import sys
+            script_path = os.path.abspath(sys.argv[0])
+        if not script_path.endswith("my_organ.py"):
+            self._json_response(500, {"error": f"无法定位my_organ.py: {script_path}"})
+            return
+
+        # 1. 语法检查
+        try:
+            compile(code, "<update>", "exec")
+        except SyntaxError as e:
+            self._json_response(400, {"error": f"语法错误: {e}", "line": e.lineno, "msg": e.msg})
+            return
+
+        # 2. 备份当前版本
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = script_path + f".bak.{timestamp}"
+        try:
+            with open(script_path, "r", encoding="utf-8") as f:
+                old_code = f.read()
+            with open(backup_path, "w", encoding="utf-8") as f:
+                f.write(old_code)
+        except Exception as e:
+            self._json_response(500, {"error": f"备份失败: {e}"})
+            return
+
+        # 3. 写入新代码
+        try:
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(code)
+        except Exception as e:
+            # 写入失败，恢复备份
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(old_code)
+            self._json_response(500, {"error": f"写入失败，已恢复: {e}"})
+            return
+
+        # 4. 记录diff到日志
+        update_log_path = os.path.join(os.path.dirname(script_path), "update_log.jsonl")
+        log_entry = {
+            "time": now_str(),
+            "organ_id": organ_id,
+            "description": description,
+            "backup_file": os.path.basename(backup_path),
+            "old_lines": len(old_code.splitlines()),
+            "new_lines": len(code.splitlines()),
+        }
+        try:
+            with open(update_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass  # 日志失败不影响主流程
+
+        self._json_response(200, {
+            "status": "updated",
+            "description": description,
+            "backup": os.path.basename(backup_path),
+            "old_lines": log_entry["old_lines"],
+            "new_lines": log_entry["new_lines"],
+            "message": f"代码已更新，备份在 {os.path.basename(backup_path)}。需要重启才能生效。",
+        })
+
+    def _handle_rollback(self):
+        """回滚到上一个备份版本"""
+        data = self._read_body()
+        if data is None:
+            data = {}
+
+        target_backup = data.get("backup_file", "")
+
+        script_path = os.path.abspath(__file__) if hasattr(self, '__module__') else None
+        if script_path is None:
+            import sys
+            script_path = os.path.abspath(sys.argv[0])
+
+        if not script_path.endswith("my_organ.py"):
+            self._json_response(500, {"error": f"无法定位my_organ.py: {script_path}"})
+            return
+
+        # 找最近的备份
+        script_dir = os.path.dirname(script_path)
+        if target_backup:
+            backup_path = os.path.join(script_dir, target_backup)
+            if not os.path.exists(backup_path):
+                self._json_response(404, {"error": f"备份不存在: {target_backup}"})
+                return
+        else:
+            # 找最新的备份
+            backups = sorted([f for f in os.listdir(script_dir)
+                             if f.startswith("my_organ.py.bak.")])
+            if not backups:
+                self._json_response(404, {"error": "没有可用的备份"})
+                return
+            backup_path = os.path.join(script_dir, backups[-1])
+
+        # 恢复
+        try:
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_code = f.read()
+            with open(script_path, "w", encoding="utf-8") as f:
+                f.write(backup_code)
+        except Exception as e:
+            self._json_response(500, {"error": f"回滚失败: {e}"})
+            return
+
+        self._json_response(200, {
+            "status": "rolled_back",
+            "restored_from": os.path.basename(backup_path),
+            "message": "已回滚，需要重启才能生效。",
+        })
+
+    def _handle_list_backups(self):
+        """列出所有可用备份"""
+        script_path = os.path.abspath(__file__) if hasattr(self, '__module__') else None
+        if script_path is None:
+            import sys
+            script_path = os.path.abspath(sys.argv[0])
+        script_dir = os.path.dirname(script_path)
+
+        backups = sorted([f for f in os.listdir(script_dir)
+                         if f.startswith("my_organ.py.bak.")])
+        self._json_response(200, {
+            "count": len(backups),
+            "backups": backups,
         })
 
     def _json_response(self, code, data):
