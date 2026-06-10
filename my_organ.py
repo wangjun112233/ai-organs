@@ -2171,7 +2171,7 @@ class AutonomousHeartbeat:
                                                     short_term=short_term, long_term=long_term,
                                                     history=hist)
 
-        # 内化互视：跟2步前的自己比较，微调裂阈值
+        # 内化互视：跟2步前的自己比较整体感受，微调裂阈值
         try:
             current_feeling = state.get("last_sensory")
             if current_feeling is not None:
@@ -2179,11 +2179,15 @@ class AutonomousHeartbeat:
                 self.sensory_window.append(current_vec)
                 if len(self.sensory_window) >= 3:
                     past_vec = self.sensory_window[-3]   # 两步前的自己
-                    # 过去张力更高 → 现在更放松 → 更愿意裂
-                    if past_vec[0] > current_vec[0]:
-                        new_cp.lie_threshold = max(0.5, new_cp.lie_threshold * 0.98)
-                    else:  # 过去张力更低 → 现在更紧 → 更保守
-                        new_cp.lie_threshold = min(1.5, new_cp.lie_threshold * 1.02)
+                    # 余弦相似度：整体像不像2步前的自己
+                    dim_names = ["tension", "phi", "e", "pi", "lambda", "sqrt_e", "i_phase", "gamma"]
+                    past_dict = dict(zip(dim_names, past_vec))
+                    curr_dict = dict(zip(dim_names, current_vec))
+                    sim = cosine_similarity(past_dict, curr_dict)
+                    if sim < 0.85:  # 和2步前差异大 → 正在变化 → 更敢裂
+                        new_cp.lie_threshold = max(0.5, new_cp.lie_threshold * 0.97)
+                    else:  # 很像 → 稳定态 → 稍微保守
+                        new_cp.lie_threshold = min(1.5, new_cp.lie_threshold * 1.01)
                     # 更新已持久化的control_params
                     state["control_params"] = new_cp.to_dict()
                     self.control_params = new_cp
