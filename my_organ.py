@@ -580,6 +580,11 @@ def heartbeat(trigger, context):
 
     short_term = load_short_term()
     long_term = load_long_term()
+    history = load_history()
+
+    # 感受输出——状态描述，不是指令（传入已加载的数据，避免反复IO）
+    sensory = get_sensory_output(state, field, reflection,
+                                short_term=short_term, long_term=long_term, history=history)
 
     return {
         "status": "alive",
@@ -595,6 +600,8 @@ def heartbeat(trigger, context):
             "short_term": len(short_term),
             "long_term": len(long_term),
         },
+        "sensory": sensory,
+        "sensory_prompt": _sensory.to_prompt_text(sensory),
     }
 
 
@@ -1852,6 +1859,9 @@ class AutonomousHeartbeat:
         state["current_mood"] = reflection.get("mood", state.get("current_mood", "平静"))
         state["dominant_emotion"] = reflection.get("dominant_emotion")
 
+        # 感受输出——后台心跳也走同一套感受层
+        state["last_sensory"] = get_sensory_output(state, field, reflection)
+
     # ── 停顿：余（评估+反馈+灵魂） ──
     def _pause(self, field, state, cp, phi_mod):
         """停顿：评估余量 → 生成下一轮控制参数 → 灵魂改写"""
@@ -1916,6 +1926,9 @@ class AutonomousHeartbeat:
 
         # 灵魂改写检查
         self._check_soul_rewrite(state, reflection)
+
+        # 感受输出——后台心跳也走同一套感受层
+        state["last_sensory"] = get_sensory_output(state, field, reflection)
 
     # ── 屏息：保持 + 微调 ──
     def _hold(self, field, state, cp, phi_mod):
@@ -2122,7 +2135,8 @@ class SensoryOutput:
         self._last_feeling = None
         self._feeling_history = []
 
-    def extract(self, state=None, field=None, reflection=None):
+    def extract(self, state=None, field=None, reflection=None,
+                short_term=None, long_term=None, history=None):
         """
         从器官完整状态中提取感受
         
@@ -2130,6 +2144,9 @@ class SensoryOutput:
             state: 器官状态dict
             field: PhiRecursiveField实例
             reflection: 前额叶反思结果
+            short_term: 预加载的短期记忆（避免反复IO）
+            long_term: 预加载的长期记忆（避免反复IO）
+            history: 预加载的反思历史（避免反复IO）
             
         Returns:
             feelings: dict — 结构化感受数据
@@ -2140,6 +2157,17 @@ class SensoryOutput:
             field = PhiRecursiveField()
         if reflection is None:
             reflection = prefrontal(state, mode="light")
+        # 预加载数据（如果调用方没传，才读文件）
+        if short_term is None:
+            short_term = load_short_term()
+        if long_term is None:
+            long_term = load_long_term()
+        if history is None:
+            history = load_history()
+        # 缓存到实例，供子方法使用
+        self._cached_short_term = short_term
+        self._cached_long_term = long_term
+        self._cached_history = history
 
         # === 1. 核心张力 ===
         tension_data = self._extract_tension(state, field, reflection)
@@ -2326,7 +2354,9 @@ class SensoryOutput:
         scores = reflection.get("scores", {})
         energy = state.get("energy_level", 0.5)
         breath_state = field.get_breath_state().value
-        hist = load_history()
+        hist = self._cached_history if hasattr(self, '_cached_history') else load_history()
+        short_term = self._cached_short_term if hasattr(self, '_cached_short_term') else load_short_term()
+        long_term = self._cached_long_term if hasattr(self, '_cached_long_term') else load_long_term()
 
         # 每根弦的"速度"从对应的器官维度抽象
         # 常数从器官数据中抽象，不是从数学函数中生成——这是从装饰变成基础设施的关键一步
@@ -2352,12 +2382,17 @@ class SensoryOutput:
 
         velocity_map = {
             "phi": _vitality(scores.get("alignment", 0.5), baseline.get("alignment", 0.5)),
-            "e": _vitality(len(load_short_term()) / max(MAX_SHORT_TERM, 1), 0.5),
+            "e": _vitality(len(short_term) / max(MAX_SHORT_TERM, 1), 0.5),
             "pi": _vitality(field.Z / Z_MAX, 0.5),
             "lambda": _vitality(scores.get("coherence", 0.5), baseline.get("coherence", 0.5)),
             "sqrt_e": _vitality(scores.get("autonomy", 0.5), baseline.get("autonomy", 0.5)),
             "i_phase": _vitality(state.get("fusion_score", 0) / 100, 0.3),
-            "gamma": _vitality(len(load_long_term()) / max(MAX_LONG_TERM, 1), 0.2),
+            # gamma fallback: 无长期记忆时用短期记忆的联结度替代——联结过的记忆=正在沉积的
+            "gamma": _vitality(
+                len(long_term) / max(MAX_LONG_TERM, 1) if long_term
+                else sum(1 for m in short_term if m.get("connections")) / max(len(short_term), 1),
+                0.2
+            ),
         }
 
         for fname, vel in velocity_map.items():
@@ -2391,7 +2426,7 @@ class SensoryOutput:
 
     def _extract_trend(self, state, reflection):
         """趋势方向"""
-        hist = load_history()
+        hist = self._cached_history if hasattr(self, '_cached_history') else load_history()
         if len(hist) < 3:
             return {"direction": "unknown", "word": "刚开始", "change_ratio": 0.0}
 
@@ -2472,18 +2507,18 @@ class SensoryOutput:
                 "action": "split",
                 "action_cn": "裂",
                 "urgency": round(raw, 2),
-                "cause": f"tension {raw:.2f} > 0.6 threshold, need to explore new space",
+                "cause": f"张力{raw:.2f}超过0.6阈值，需要开拓新空间",
             })
 
         # 遇倾向
-        short_term = load_short_term()
+        short_term = self._cached_short_term if hasattr(self, '_cached_short_term') else load_short_term()
         pending = [m for m in short_term if m.get("status") != "consolidated"]
         if len(pending) > 5:
             tendencies.append({
                 "action": "perceive",
                 "action_cn": "遇",
                 "urgency": round(len(pending) / MAX_SHORT_TERM, 2),
-                "cause": f"{len(pending)} unresolved memories pending, need to receive signals",
+                "cause": f"{len(pending)}条未决记忆待处理，需要接收信号",
             })
 
         # 认倾向
@@ -2495,7 +2530,7 @@ class SensoryOutput:
                     "action": "recognize",
                     "action_cn": "认",
                     "urgency": round(1.0 - dom_val, 2),
-                    "cause": f"{dom} dimension at {dom_val:.2f}, dominant constraint needs understanding",
+                    "cause": f"{dom}维度仅{dom_val:.2f}，主导约束需要理解",
                 })
 
         # 落倾向
@@ -2504,7 +2539,7 @@ class SensoryOutput:
                 "action": "consolidate",
                 "action_cn": "落",
                 "urgency": round(abs(trend["change_ratio"]), 2),
-                "cause": f"trend {trend['word']}, need to ground and consolidate",
+                "cause": f"趋势{trend['word']}，需要巩固落地",
             })
 
         # 余倾向
@@ -2514,7 +2549,7 @@ class SensoryOutput:
                 "action": "rest",
                 "action_cn": "余",
                 "urgency": round(1.0 - energy, 2),
-                "cause": f"energy {energy:.2f} < 0.3, need to rest and recover",
+                "cause": f"能量{energy:.2f}低于0.3，需要休息恢复",
             })
 
         # 按urgency排序
@@ -2572,14 +2607,18 @@ class SensoryOutput:
 _sensory = SensoryOutput()
 
 
-def get_sensory_output(state=None, field=None, reflection=None):
+def get_sensory_output(state=None, field=None, reflection=None,
+                      short_term=None, long_term=None, history=None):
     """获取感受输出——全局入口"""
-    return _sensory.extract(state, field, reflection)
+    return _sensory.extract(state, field, reflection,
+                           short_term=short_term, long_term=long_term, history=history)
 
 
-def get_sensory_prompt(state=None, field=None, reflection=None):
+def get_sensory_prompt(state=None, field=None, reflection=None,
+                       short_term=None, long_term=None, history=None):
     """获取感受prompt文本——直接注入对话"""
-    feelings = _sensory.extract(state, field, reflection)
+    feelings = _sensory.extract(state, field, reflection,
+                               short_term=short_term, long_term=long_term, history=history)
     return _sensory.to_prompt_text(feelings)
 
 
