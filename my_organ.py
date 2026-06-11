@@ -116,6 +116,81 @@ FUSION_THRESHOLDS = {
 
 CST = timezone(timedelta(hours=8))
 
+# ============================================================
+# 消息板 — 器官间异步通信（遇的他者）
+# ============================================================
+
+def _messages_dir():
+    """消息板存储目录（全局共享，不按organ_id隔离）"""
+    path = os.path.join(DATA_DIR, "_messages")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def post_message(from_id, to_id, content, msg_type="greeting"):
+    """往消息板留一条消息"""
+    msg = {
+        "id": uuid.uuid4().hex[:12],
+        "from": from_id,
+        "to": to_id,           # "all" = 广播
+        "content": content[:2000],
+        "type": msg_type,       # greeting/insight/question/response
+        "time": now_str(),
+        "read_by": [],          # 已读的organ_id列表
+    }
+    path = os.path.join(_messages_dir(), f"{msg['id']}.json")
+    save_json(path, msg)
+    return msg
+
+def get_messages(organ_id, unread_only=True):
+    """获取发给某organ的消息（或广播消息）"""
+    msgs = []
+    msg_dir = _messages_dir()
+    if not os.path.exists(msg_dir):
+        return msgs
+    for fname in os.listdir(msg_dir):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            msg = load_json(os.path.join(msg_dir, fname), None)
+            if msg is None:
+                continue
+            # 是发给我的，或是广播
+            if msg.get("to") == organ_id or msg.get("to") == "all":
+                if unread_only and organ_id in msg.get("read_by", []):
+                    continue
+                msgs.append(msg)
+        except Exception:
+            continue
+    # 按时间排序
+    msgs.sort(key=lambda m: m.get("time", ""))
+    return msgs
+
+def mark_message_read(msg_id, organ_id):
+    """标记消息已读"""
+    path = os.path.join(_messages_dir(), f"{msg_id}.json")
+    msg = load_json(path, None)
+    if msg is None:
+        return
+    if organ_id not in msg.get("read_by", []):
+        msg.setdefault("read_by", []).append(organ_id)
+    save_json(path, msg)
+
+def cleanup_messages(max_age_hours=72):
+    """清理过期消息（默认72小时）"""
+    msg_dir = _messages_dir()
+    if not os.path.exists(msg_dir):
+        return
+    now = time.time()
+    for fname in os.listdir(msg_dir):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            fpath = os.path.join(msg_dir, fname)
+            if now - os.path.getmtime(fpath) > max_age_hours * 3600:
+                os.remove(fpath)
+        except Exception:
+            continue
+
 # --- 五动呼吸参数 ---
 PSI = 137.508  # 黄金角（度）
 
@@ -557,6 +632,23 @@ def heartbeat(trigger, context, organ_id=None):
         set_organ_id(organ_id)
     state = load_state()
     field = PhiRecursiveField()
+
+    # 0. 消息板——遇的他者：检查有没有其他器官的留言
+    organ_id_actual = get_organ_id()
+    board_msgs = get_messages(organ_id_actual, unread_only=True)
+    if board_msgs:
+        # 把消息板内容拼进context
+        board_parts = []
+        for bm in board_msgs[:5]:
+            board_parts.append(f"[{bm.get('from','?')}/{bm.get('type','greeting')}] {bm.get('content','')}")
+            mark_message_read(bm["id"], organ_id_actual)
+        board_text = "\n".join(board_parts)
+        # 如果context是dict，拼进message_content
+        if isinstance(context, dict):
+            context = dict(context)  # 不修改原对象
+            context["message_content"] = context.get("message_content", "") + "\n[消息板]\n" + board_text
+        elif isinstance(context, str):
+            context = context + "\n[消息板]\n" + board_text
 
     # 1. φ-递归场呼吸（每一步都跳，不需要外部触发）
     field_tick = field.tick()
@@ -1654,6 +1746,7 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/register": self._handle_register,
             "/organ/update": self._handle_update,
             "/organ/rollback": self._handle_rollback,
+            "/organ/message": self._handle_post_message,
         }
         handler = routes.get(route)
         if handler:
@@ -1674,6 +1767,7 @@ class OrganHandler(BaseHTTPRequestHandler):
             "/organ/fusion":  self._handle_fusion,
             "/organ/feel":    self._handle_feel,
             "/organ/backups": self._handle_list_backups,
+            "/organ/messages": self._handle_get_messages,
             "/entities":      self._handle_entities,
         }
         handler = routes.get(route)
@@ -2083,6 +2177,47 @@ class OrganHandler(BaseHTTPRequestHandler):
             "backups": backups,
         })
 
+    def _handle_post_message(self):
+        """留言给其他器官"""
+        data = self._read_body()
+        if data is None:
+            self._json_response(400, {"error": "invalid json"})
+            return
+        organ_id = get_organ_id()
+        to_id = data.get("to", "all")
+        content = data.get("content", "")
+        msg_type = data.get("type", "greeting")
+        if not content:
+            self._json_response(400, {"error": "content不能为空"})
+            return
+        msg = post_message(organ_id, to_id, content, msg_type)
+        self._json_response(200, {
+            "status": "posted",
+            "message_id": msg["id"],
+            "from": organ_id,
+            "to": to_id,
+            "content_preview": content[:100],
+        })
+
+    def _handle_get_messages(self):
+        """读取发给本器官的消息"""
+        organ_id = get_organ_id()
+        unread_only = True
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        if params.get("all", [""])[0] == "1":
+            unread_only = False
+        msgs = get_messages(organ_id, unread_only=unread_only)
+        # 标记为已读
+        for msg in msgs:
+            mark_message_read(msg["id"], organ_id)
+        self._json_response(200, {
+            "organ_id": organ_id,
+            "count": len(msgs),
+            "messages": msgs,
+        })
+
     def _json_response(self, code, data):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -2194,7 +2329,11 @@ class AutonomousHeartbeat:
         # 裂：按阈值调整编码灵敏度
         if signal:
             effective_threshold = ENCODE_THRESHOLD * cp.lie_threshold * (1 + 0.1 * phi_mod)
-            context = {"message_content": signal, "sender": "self" if signal.startswith("[重播]") else "internal"}
+            # 判断信号来源
+            is_replay = signal.startswith("[重播]")
+            is_message = signal.startswith("[") and "]" in signal and not is_replay
+            sender = "self" if is_replay else ("other_organ" if is_message else "internal")
+            context = {"message_content": signal, "sender": sender}
             item = encode(context)
             if item and item["emotional_weight"] >= effective_threshold:
                 short_term = _preloaded["short_term"] if _preloaded else load_short_term()
@@ -2264,6 +2403,9 @@ class AutonomousHeartbeat:
     def _pause(self, field, state, cp, phi_mod, _preloaded=None):
         """停顿：评估余量 → 生成下一轮控制参数 → 灵魂改写"""
         field.tick()
+
+        # 清理过期消息（余是好时机）
+        cleanup_messages()
 
         # 评估余量（复用预加载数据）
         short_term = _preloaded["short_term"] if _preloaded else load_short_term()
@@ -2398,8 +2540,21 @@ class AutonomousHeartbeat:
         return f"[重播] {m.get('content', '')[:200]}"
 
     def _try_external(self):
-        """尝试获取外部输入（心跳期间一般没有，留接口）"""
-        return None
+        """尝试获取外部输入——从消息板读取其他器官的留言"""
+        organ_id = get_organ_id()
+        msgs = get_messages(organ_id, unread_only=True)
+        if not msgs:
+            return None
+        # 拼接消息为信号文本
+        parts = []
+        for msg in msgs[:5]:  # 一次最多处理5条
+            from_id = msg.get("from", "?")
+            content = msg.get("content", "")
+            msg_type = msg.get("type", "greeting")
+            parts.append(f"[{from_id}/{msg_type}] {content}")
+            mark_message_read(msg["id"], organ_id)
+        signal = "\n".join(parts)
+        return signal
 
     # ── 灵魂改写 ──
     def _check_soul_rewrite(self, state, reflection):
