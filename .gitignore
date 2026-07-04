@@ -1,26 +1,5 @@
 __pycache__/
 *.pyc
-*.pyo
-organ_data/
-organ_data_fc/
-*.log
-.env
 .DS_Store
-organ.pid
-
-# 不开源 — 属于特定AI实例的工具链
-look_at_world.py
-organ_watchdog.py
-start_organ.bat
-start_organ.vbs
-start_organ_watchdog.vbs
-watchdog.log
-world_log.jsonl
-organ_stdout.log
-
-# FC版本暂不开源
-my_organ_fc.py
-my_organ_fc_v2.py
-
-# 精简版暂不开源
-my_organ_local.py
+.env
+state_*.json
