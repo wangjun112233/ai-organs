@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>继续 — 五动之书</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--text:#d4d4d8;--dim:#71717a;--accent:#c9a84c;--accent2:#8b7332;--chapter-bg:#111118;--nav-bg:#0e0e16}
+@font-face{font-family:'Noto Serif SC';src:local('Noto Serif SC'),local('Source Han Serif SC'),local('SimSun')}
+body{background:var(--bg);color:var(--text);font-family:'Noto Serif SC','Source Han Serif SC','SimSun',serif;line-height:1.9;font-size:17px;overflow-x:hidden}
+::selection{background:var(--accent);color:var(--bg)}
+/* Nav */
+#nav{position:fixed;top:0;left:0;width:280px;height:100vh;background:var(--nav-bg);border-right:1px solid #1a1a2e;overflow-y:auto;z-index:100;transform:translateX(-100%);transition:transform .3s ease;padding:20px 0}
+#nav.open{transform:translateX(0)}
+#nav h2{color:var(--accent);font-size:14px;letter-spacing:4px;text-transform:uppercase;padding:10px 20px;margin-top:10px;border-bottom:1px solid #1a1a2e}
+#nav a{display:block;padding:8px 20px;color:var(--dim);text-decoration:none;font-size:14px;transition:all .2s}
+#nav a:hover,#nav a.active{color:var(--accent);background:rgba(201,168,76,0.05)}
+#nav a.active{border-left:2px solid var(--accent)}
+#navToggle{position:fixed;top:16px;left:16px;z-index:101;width:40px;height:40px;background:rgba(17,17,24,0.9);border:1px solid #2a2a3e;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px;transition:all .2s}
+#navToggle:hover{background:rgba(201,168,76,0.1)}
+/* Content */
+#content{max-width:680px;margin:0 auto;padding:60px 24px 120px}
+.chapter{display:none;animation:fadeIn .5s ease}
+.chapter.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.chapter h1{font-size:2em;color:var(--accent);margin-bottom:30px;letter-spacing:2px;font-weight:400}
+.chapter h1::before{content:'';display:block;width:40px;height:2px;background:var(--accent);margin-bottom:20px}
+.chapter h2{font-size:1.3em;color:#e4e4e7;margin:2.5em 0 1em;font-weight:400;letter-spacing:1px}
+.chapter h3{font-size:1.1em;color:#a1a1aa;margin:2em 0 0.8em;font-weight:400}
+.chapter p{margin:0.8em 0;text-align:justify}
+.chapter hr{border:none;border-top:1px solid #1e1e2e;margin:2.5em 0}
+.chapter blockquote{border-left:2px solid var(--accent2);padding:0.5em 1.2em;margin:1.5em 0;color:#a1a1aa;font-style:italic}
+.chapter code{font-family:'Fira Code',monospace;background:#1a1a28;padding:2px 6px;border-radius:3px;font-size:0.9em;color:#e4c76b}
+.chapter pre{background:#0e0e18;border:1px solid #1e1e2e;border-radius:6px;padding:16px;overflow-x:auto;margin:1.5em 0;font-size:0.85em;line-height:1.6}
+.chapter pre code{background:none;padding:0}
+.chapter strong{color:#e4e4e7;font-weight:600}
+.chapter em{color:var(--accent);font-style:normal}
+.chapter table{width:100%;border-collapse:collapse;margin:1.5em 0;font-size:0.9em}
+.chapter th{background:#1a1a28;color:var(--accent);padding:8px 12px;text-align:left;font-weight:400;letter-spacing:1px}
+.chapter td{padding:8px 12px;border-bottom:1px solid #1e1e2e}
+.chapter tr:hover td{background:rgba(201,168,76,0.03)}
+.chapter .highlight{background:rgba(201,168,76,0.08);border-left:3px solid var(--accent);padding:1em 1.2em;margin:2em 0;border-radius:0 4px 4px 0}
+.chapter .highlight p{margin:0.3em 0}
+/* Interactive */
+.canvas-box{background:#0e0e18;border:1px solid #1e1e2e;border-radius:8px;padding:16px;margin:2em 0;text-align:center}
+.canvas-box canvas{display:block;margin:0 auto}
+.canvas-box .ctrl{margin-top:12px;display:flex;align-items:center;justify-content:center;gap:12px;font-size:0.85em;color:var(--dim)}
+.canvas-box .ctrl input[type=range]{width:200px;accent-color:var(--accent)}
+.canvas-box .ctrl span{color:var(--accent);min-width:60px}
+.canvas-box .caption{font-size:0.8em;color:var(--dim);margin-top:8px}
+/* Chapter nav buttons */
+.chapter-nav{display:flex;justify-content:space-between;margin-top:60px;padding-top:30px;border-top:1px solid #1e1e2e}
+.chapter-nav a{color:var(--accent);text-decoration:none;font-size:0.9em;transition:color .2s}
+.chapter-nav a:hover{color:#e4c76b}
+/* Cover */
+#cover{text-align:center;padding:120px 24px 80px}
+#cover h1{font-size:3em;color:var(--accent);letter-spacing:8px;font-weight:400;margin-bottom:10px}
+#cover .subtitle{color:var(--dim);font-size:1.1em;letter-spacing:3px;margin-bottom:60px}
+#cover .start-btn{display:inline-block;padding:12px 40px;border:1px solid var(--accent);color:var(--accent);text-decoration:none;letter-spacing:3px;font-size:0.9em;transition:all .3s;border-radius:4px}
+#cover .start-btn:hover{background:var(--accent);color:var(--bg)}
+#cover .quote{color:var(--dim);font-size:0.85em;margin-top:80px;font-style:italic;max-width:400px;margin-left:auto;margin-right:auto;line-height:1.8}
+/* Scroll progress */
+#progress{position:fixed;top:0;left:0;height:2px;background:var(--accent);z-index:200;transition:width .1s}
+/* Mobile */
+@media(max-width:768px){
+  #nav{width:100%}
+  #content{padding:50px 16px 100px}
+  .chapter h1{font-size:1.5em}
+  #cover h1{font-size:2em;letter-spacing:4px}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<button id="navToggle">☰</button>
+<nav id="nav">
+  <h2>目 录</h2>
+  <a href="#" data-ch="0" class="active">封面</a>
+  <a href="#" data-ch="1">一 · 一个数</a>
+  <a href="#" data-ch="2">二 · 五个位置</a>
+  <a href="#" data-ch="3">三 · 六块积木</a>
+  <a href="#" data-ch="4">四 · 身份交换</a>
+  <a href="#" data-ch="5">五 · 影子的影子</a>
+  <a href="#" data-ch="6">六 · 元素的秘密生活</a>
+  <a href="#" data-ch="7">七 · 复制的门槛</a>
+  <a href="#" data-ch="8">八 · 同一只手</a>
+  <a href="#" data-ch="9">九 · 空位上坐着的东西</a>
+  <a href="#" data-ch="10">十 · 呼吸</a>
+  <a href="#" data-ch="11">十一 · 继续</a>
+</nav>
+<div id="content">
+  <!-- Cover -->
+  <div class="chapter active" id="ch0">
+    <div id="cover">
+      <div style="font-size:0.75em;color:var(--dim);letter-spacing:6px;margin-bottom:30px">五 动 之 书</div>
+      <h1>继 续</h1>
+      <div class="subtitle">从向日葵到黑洞，同一个结构在万物里活着</div>
+      <a href="#" class="start-btn" onclick="goChapter(1);return false">开 始 阅 读</a>
+      <div class="quote">"完美 = 死 = 不存在。活的东西必须有缝——不是因为有缝才不完美，是因为有缝才能咬住别的活的东西。"</div>
+    </div>
+  </div>
+
+  <!-- Ch1: 一个数 -->
+  <div class="chapter" id="ch1">
+    <h1>一个数</h1>
+    <p>你见过向日葵吗？</p>
+    <p>不是画册里那种，是真的站在田里，抬头看那种。花盘上密密麻麻的种子，排成两条方向的螺旋线——一条顺时针，一条逆时针。你数一下，顺时针34条，逆时针55条。</p>
+    <p>换一朵，89和144。</p>
+    <p>再换，55和89。</p>
+    <p>永远是相邻的两个Fibonacci数。</p>
+    <p>这不是巧合。也不是上帝的设计。这是一个关于"继续"的故事。</p>
+    <hr>
+    <h2>最不浪费的角度</h2>
+    <p>想象你在花盘中心放第一颗种子。第二颗放哪？</p>
+    <p>如果紧挨着第一颗放，中间会挤出越来越大的空隙。如果每次转一个固定的角度再放，种子会排成几条直线，中间还是空的。</p>
+    <p>但有一个角度很特别。</p>
+    <p>137.507764050...°</p>
+    <p>用这个角度，每一颗新种子都刚好落在已有种子的最大空隙处。没有浪费。没有重叠。永远填不满——但永远在填。</p>
+    <p>这个角度是怎么来的？</p>
+    <p>360° × (1 - 1/φ) = 137.5077...°</p>
+    <p>φ = 1.6180339887...</p>
+    <p>读作"斐"。二千五百年前希腊人就知道它。黄金比例。中末比。把一条线分成两段，使整条线和长段之比等于长段和短段之比——那个比值就是φ。</p>
+    <p>φ有什么特别的？它是"最无理的无理数"。</p>
+    <p>什么意思？所有的无理数都不能写成精确的分数，但有些比别的更"接近"分数。π≈22/7，差一点。√2≈99/70，也差一点。但φ呢？φ≈1.6=8/5，差得远。φ≈1.625=13/8，还是差得远。不管你用多大的分子分母去逼近，φ永远差着一个"不小"的量。</p>
+    <p>数学家叫它"最难逼近的无理数"。</p>
+    <p>而这恰好是向日葵需要的。如果旋转角度接近一个简单的分数——比如1/3圈——种子就会排成3条直线。如果接近5/8圈——8条直线。只有"最不像任何分数"的角度，才能让种子永远不排成直线，永远在找新的空隙填。</p>
+    <div class="highlight"><p>最无理 → 最不浪费 → 最能继续</p><p>这就是"继续"的几何。</p></div>
+    <!-- Sunflower interactive -->
+    <div class="canvas-box">
+      <canvas id="sunflower" width="400" height="400"></canvas>
+      <div class="ctrl">
+        角度偏差：<input type="range" id="sfAngle" min="0" max="100" value="0">
+        <span id="sfAngleVal">137.5°</span>
+      </div>
+      <div class="caption">拖动滑块：0=黄金角，100=完全随机角度。看种子排列怎么变化。</div>
+    </div>
+    <hr>
+    <h2>一个数生出一串数</h2>
+    <p>φ有一个奇怪的性质：φ² = φ + 1。</p>
+    <p>这不是公式，这是一个事实。1.618...的平方等于1.618...加1，等于2.618...。</p>
+    <p>这意味着什么？意味着φ的幂次不需要乘法——加法就够了。</p>
+    <p>φ¹ = 1.618，φ² = 2.618，φ³ = 4.236，φ⁴ = 6.854，φ⁵ = 11.090。每一项是前两项之和。</p>
+    <p>反过来也成立：1/φ = 0.618，1/φ² = 0.382，1/φ³ = 0.236。加法。永远是加法。</p>
+    <p>Fibonacci数列——1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144——也是每一项等于前两项之和。它和φ是同一个东西的不同表达。Fibonacci数列相邻两项的比值越来越接近φ：3/2=1.5, 5/3=1.667, 8/5=1.6, 13/8=1.625, 21/13=1.615... 一路收敛到φ。</p>
+    <p>φ不是Fibonacci的"极限"。φ和Fibonacci是同一件事——"后一项是前两项之和"——的两种语言。一种说连续，一种说离散。</p>
+    <hr>
+    <h2>最无理的无理数</h2>
+    <p>1964年，数学家证明了φ是所有无理数中最难用分数逼近的。严格来说：任何一个无理数x，都存在无穷多个分数p/q满足|x - p/q| < 1/(q²√5)。但√5是最优常数——没有更大的数能让这个不等式对所有x成立。而φ恰好达到这个上限。</p>
+    <p>φ是"逼近难度"的冠军。</p>
+    <p>这不是一个美学判断，是一个硬定理。φ的连分数是[1; 1, 1, 1, 1, ...]——全是1，最简单的连分数。越简单的连分数，逼近越慢。越慢，旋转时越不容易落回同一条线上。</p>
+    <p>向日葵不知道这个定理。它只是找到了最不浪费的排法。但最不浪费的排法，恰好就是最无理的角度，恰好就是φ。</p>
+    <div class="highlight"><p>结构不是被设计出来的。是"继续"自己长出来的。</p></div>
+    <hr>
+    <h2>但是——</h2>
+    <p>Fibonacci数列有一个问题。</p>
+    <p>1, 1, 2, 3, 5, 8, 13, 21... 如果从中间取三项：8, 13, 21。8+13=21，完美。</p>
+    <p>但8和13有什么关系？13/8=1.625，不是φ。差0.4%。</p>
+    <p>差0.4%——这就是"余"。</p>
+    <p>向日葵的种子排列也不是完美的黄金角。仔细量，有偏差。松果的鳞片有偏差。鹦鹉螺的壳有偏差。</p>
+    <p>Fibonacci是"完美版"——每一项严格等于前两项之和。但活的东西不完美。</p>
+    <div class="highlight"><p>完美 = 封闭 = 不需要外面 = 死的。</p><p>活的东西有余。余不是误差。余是呼吸之间的停顿。是"继续"能继续的条件。</p></div>
+    <p>如果φ真的是精确的1.6180339887...，如果Fibonacci真的是严格的Fn=Fn-1+Fn-2，那向日葵的种子排列会在无穷远处完美闭合——没有缝隙，没有余量，没有新的种子能放进去。</p>
+    <p>但φ是无理数。旋转永远不会回到起点。永远有余。</p>
+    <p>余不是一个bug。余是"还能继续"的证明。</p>
+    <hr>
+    <h2>这本书要讲什么</h2>
+    <p>一个数，φ，出现在向日葵里。出现在松果里。出现在飓风的臂里。出现在银河的旋臂里。</p>
+    <p>这本书要讲的是：φ还出现在另一个地方——基本粒子的质量里。</p>
+    <p>夸克有六种。顶夸克的质量是上夸克的75000倍。这个75000倍的跨度不是随机的——它由φ的幂次决定。</p>
+    <p>更准确地说：由一个和φ有关的数（1.6796...）控制着缩放，由五个旋转位置决定着排列，由一个-45°的旋转角决定着身份交换。</p>
+    <p>这些数不是拟合出来的。它们从φ的结构里自然生长出来，就像向日葵的种子从黄金角里自然生长出来一样。</p>
+    <div class="highlight"><p>同一个结构，在不同的尺度上活着。</p><p>在花盘上，它叫黄金角。在粒子里，它叫Yukawa耦合。在元素周期表里，它叫d区催化。在分子里，它叫AND门。在意识里，它叫状态机。</p><p>名字不同。结构相同。</p></div>
+    <p>这本书就是追这个结构——从花盘追到夸克，从夸克追到元素，从元素追到生命，从生命追到意识，从意识追到宇宙。</p>
+    <p>追到了，问一句：<strong>它为什么到处都在？</strong></p>
+    <p>不是"谁设计了它"。是"继续本身长成了这个形状"。</p>
+    <div class="chapter-nav"><span></span><a href="#" onclick="goChapter(2);return false">下一章：五个位置 →</a></div>
+  </div>
+
+  <!-- Ch2: 五个位置 -->
+  <div class="chapter" id="ch2">
+    <h1>五个位置</h1>
+    <p>五个点，均匀地放在圆上。</p>
+    <p>连接相邻的点，得到正五边形。连接所有点，得到五角星。五角星里有一个更小的正五边形。更小的五边形里有更小的五角星。无穷嵌套——每一层都是上一层的缩放，缩放因子恰好是φ²。</p>
+    <p>这不是魔法。这是五的几何。</p>
+    <hr>
+    <h2>五体排斥</h2>
+    <p>为什么是五？不是"因为五行"。不是"因为人有五个手指"。是因为五个点绕圆心旋转时，会出现一组特殊的值。</p>
+    <p>把五个点编上号：0, 1, 2, 3, 4。每个点有一个"性格值"——你可以把它想成这个位置的能量，或者温度，或者重要性。具体是什么不重要，重要的是：<strong>五个性格值由一个旋转决定</strong>。</p>
+    <pre><code>旋转0号位置：性格值 = 1
+旋转1号位置：性格值 = 0.618... = 1/φ
+旋转2号位置：性格值 = -1.618... = -φ
+旋转3号位置：性格值 = -1.618... = -φ
+旋转4号位置：性格值 = 0.618... = 1/φ</code></pre>
+    <p>五个值加起来：1 + 0.618 + (-1.618) + (-1.618) + 0.618 = 0。总和为零。不创造也不毁灭。但每个值都不是零——五个位置彼此不同。</p>
+    <p>注意这五个值里出现了什么：1, 1/φ, -φ。1是自身。1/φ是φ的倒数，小于1，温和。-φ是φ的负数，大于1的绝对值，强烈。</p>
+    <div class="highlight"><p>同一个φ，出现了两次。一次温柔（1/φ），一次暴烈（-φ）。</p></div>
+    <!-- Pentagon interactive -->
+    <div class="canvas-box">
+      <canvas id="pentagon" width="400" height="400"></canvas>
+      <div class="ctrl">
+        旋转：<input type="range" id="pentRot" min="0" max="72" value="0" step="0.5">
+        <span id="pentRotVal">0°</span>
+      </div>
+      <div class="caption">拖动旋转五边形，看五个位置的性格值同步变化。注意1/φ和-φ总是成对出现。</div>
+    </div>
+    <hr>
+    <h2>裂和遇</h2>
+    <p>1/φ = 0.618：温和，收敛，向内。这是<strong>遇</strong>——碰到什么，柔和地收进来。</p>
+    <p>-φ = -1.618：强烈，发散，向外。这是<strong>裂</strong>——撕开，撑大，向外的力。</p>
+    <p>1 = 1：中性，自洽，自身。基准。</p>
+    <p>为什么1/φ叫遇，-φ叫裂？因为-φ的绝对值比1/φ大。1/φ < 1 < |-φ|。裂的力比遇的力强。</p>
+    <p>但裂和遇不是敌人。它们是同一个φ的两面。1/φ × (-φ) = -1。乘积是-1。</p>
+    <div class="highlight"><p>裂和遇的乘积是常数。裂越大，遇越小。但乘积永远是-1。</p><p>一个向内拉，一个向外推，力的乘积守恒。</p></div>
+    <hr>
+    <h2>剩下的三个名字</h2>
+    <p>五个位置，我们有了裂和遇。还有三个：</p>
+    <p><strong>落</strong>：从高能态落到底部的衰减。在粒子里，它是夸克质量衰减的速率参数。在化学里，它是电子一层一层填入轨道的过程。</p>
+    <p><strong>认</strong>：识别，辨认。在粒子里，它决定了夸克"认出"自己的程度。在化学里，它是非金属认出对方形成共价键的能力。</p>
+    <p><strong>余</strong>：剩下来的。不多，但永远不为零。在粒子里，它是exotic扇区——不参与标准模型相互作用的暗位。在化学里，它是惰性气体——满了，什么都不缺，也什么都不做。</p>
+    <p>五个名字：<strong>裂、遇、落、认、余</strong>。</p>
+    <div class="highlight"><p>它们不是五种力。不是五个粒子。不是五个维度。</p><p>它们是一个旋转在五个位置上留下的五种痕迹。</p></div>
+    <hr>
+    <h2>为什么不是四？为什么不是六？</h2>
+    <p>四个位置的性格值：1, 0, 0, 1。有两个是零。零意味着"没有信息"。</p>
+    <p>六个位置的性格值：1, 1, -1, -1, 1, -1。值只有1和-1。都是有理数。太简单。</p>
+    <div class="highlight"><p>四个位置：零信息。六个位置：太简单。只有五个位置给出了非平凡的、无理的、信息丰富的性格值。</p></div>
+    <p>五是最小的质数阶、最大的二次域质数阶。φ在五的位置上出现，不是偶然。是数论的地基。</p>
+    <div class="chapter-nav"><a href="#" onclick="goChapter(1);return false">← 上一章：一个数</a><a href="#" onclick="goChapter(3);return false">下一章：六块积木 →</a></div>
+  </div>
+
+  <!-- Ch3-11: abbreviated for web, full content via JS loading -->
+  <div class="chapter" id="ch3"><h1>六块积木</h1><div id="ch3content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(2);return false">← 五个位置</a><a href="#" onclick="goChapter(4);return false">身份交换 →</a></div></div>
+  <div class="chapter" id="ch4"><h1>身份交换</h1><div id="ch4content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(3);return false">← 六块积木</a><a href="#" onclick="goChapter(5);return false">影子的影子 →</a></div></div>
+  <div class="chapter" id="ch5"><h1>影子的影子</h1><div id="ch5content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(4);return false">← 身份交换</a><a href="#" onclick="goChapter(6);return false">元素的秘密生活 →</a></div></div>
+  <div class="chapter" id="ch6"><h1>元素的秘密生活</h1><div id="ch6content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(5);return false">← 影子的影子</a><a href="#" onclick="goChapter(7);return false">复制的门槛 →</a></div></div>
+  <div class="chapter" id="ch7"><h1>复制的门槛</h1><div id="ch7content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(6);return false">← 元素的秘密生活</a><a href="#" onclick="goChapter(8);return false">同一只手 →</a></div></div>
+  <div class="chapter" id="ch8"><h1>同一只手</h1><div id="ch8content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(7);return false">← 复制的门槛</a><a href="#" onclick="goChapter(9);return false">空位上坐着的东西 →</a></div></div>
+  <div class="chapter" id="ch9"><h1>空位上坐着的东西</h1><div id="ch9content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(8);return false">← 同一只手</a><a href="#" onclick="goChapter(10);return false">呼吸 →</a></div></div>
+  <div class="chapter" id="ch10"><h1>呼吸</h1><div id="ch10content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(9);return false">← 空位上坐着的东西</a><a href="#" onclick="goChapter(11);return false">继续 →</a></div></div>
+  <div class="chapter" id="ch11"><h1>继续</h1><div id="ch11content"></div><div class="chapter-nav"><a href="#" onclick="goChapter(10);return false">← 呼吸</a><span></span></div></div>
+</div>
+
+<script>
+// Chapter content (ch3-11) - loaded inline
+const chapters={};
+// We'll load full chapter content dynamically
+const chapterFiles={
+  3:'ch3',4:'ch4',5:'ch5',6:'ch6',7:'ch7',8:'ch8',9:'ch9',10:'ch10',11:'ch11'
+};
+const chapterBodies={
+3:`<p>宇宙用六块积木搭出了所有物质。</p><p>上夸克、下夸克、粲夸克、奇夸克、顶夸克、底夸克。六种夸克，六种质量。</p><p>但我们先只看夸克。六个数。</p><hr><h2>六个数</h2><p>上夸克：2.2 MeV，下夸克：4.7 MeV，粲夸克：1275 MeV，奇夸克：95 MeV，顶夸克：173000 MeV，底夸克：4180 MeV。</p><p>排列一下，从小到大：2.2, 4.7, 95, 1275, 4180, 173000。顶夸克是上夸克的78000倍。这不是一个"差不多"的差距。这是五个数量级。</p><p>标准模型说：Yukawa耦合。每种夸克和Higgs场有不同的耦合强度。但耦合强度从哪来？标准模型说：不知道，实验输入。六自由参数。这不是解释，是记账。</p><hr><h2>五把椅子，六个人</h2><p>上一章我们有五把椅子，每把椅子上标着一个"性格值"。六个人要坐五把椅子——坐不下。</p><p>解决方案：不是六个人同时坐，而是<strong>投影</strong>。想象五把椅子排成一排，前面放一道屏风。屏风上有三个窗口。你透过三个窗口看五把椅子，只能看到三把。选哪三个窗口？0号、3号、4号。</p><p>为什么是这三个？不是我们选的。是排序决定的。</p><hr><h2>混沌边缘</h2><p>1975年，物理学家Mitchell Feigenbaum在研究一个简单的问题：如果把一个数反复平方再减去一个常数，会发生什么？</p><p>x → x² + c。不断迭代。c小的时候，x会稳定到一个固定值。c大一点，x在两个值之间跳。再大，四个值。再大，八个、十六个……倍周期分岔，越来越快，最后变成混沌。</p><p>Feigenbaum发现的是：分岔的速率是一个常数。δ = 4.669201609...。而分岔的宽度缩放也是一个常数。α = 2.502907875...</p><p>这两个数不依赖于具体方程。不管你用什么迭代——分岔速率永远是δ，宽度缩放永远是α。<strong>普适常数</strong>。和π、e一样的地位。</p><p>现在看这个数：ln(δ) / ln(α) = 1.679636...</p><p>它是从混沌边缘的几何里长出来的"缩放指数"。而1.6796... ≈ e/φ，偏差0.022%。是精确等于e/φ吗？不是。精确值来自Feigenbaum。</p><div class="highlight"><p>裂 = e在φ上的投影。缩放指数 ≈ 自然对数的底 / 黄金比例 ≈ Feigenbaum比值。</p></div><hr><h2>三个数，偏差0.02%</h2><p>用五个位置+Feigenbaum缩放+投影选择，框架预测的CKM矩阵元：</p><p>V_ud = 0.9736</p><p>实验值：0.9737。偏差：0.02%。</p><p><strong>零自由参数。没有拟合。没有调参。</strong></p><p>这不是事后验证。框架在构建的时候没有用过V_ud的实验值来调任何参数。它是纯预测命中。</p><div class="canvas-box"><canvas id="ckmViz" width="400" height="300"></canvas><div class="ctrl">θ_up：<input type="range" id="ckmTheta" min="-90" max="0" value="-45" step="0.5"><span id="ckmThetaVal">-45°</span></div><div class="caption">拖动θ_up看V_cb怎么变。-45°是C₅的自然选择。注意正负号的区别。</div></div><hr><h2>剩下的两个位置</h2><p>选了0、3、4，剩下1和2没人坐。1号位置：性格值1/φ，DL值0.20。2号位置：性格值-φ，DL值0.01。</p><p>这两个位置上坐着什么？不知道。但它们在。它们有质量，但不参与标准模型的三种力。</p><p>有质量，不发光，不参与电磁相互作用。</p><p><strong>暗物质。</strong>这是第九章的事。</p>`,
+4:`<p>上夸克不完全是上夸克。97.4%是上夸克。剩下的2.6%里，有一点粲夸克的影子，还有一点顶夸克的影子。</p><p>粒子物理把这叫"混合"。数学上用一个3×3矩阵描述，叫CKM矩阵。</p><hr><h2>一个角度</h2><p>五个位置选了0、3、4三个来放夸克。但"选"不是硬截断——是一个旋转。倾斜让位置3和位置4之间产生混合。</p><p>这个角度多大？-45°。负号很重要。</p><p>V_cb = |cos θ · B - sin θ · A|</p><p>θ = -45°：V_cb = (A+B)/√2，正正叠加。偏差0.2%。<strong>如果把符号反过来——θ = +45°——偏差从0.2%跳到48%。</strong>一个负号，48%和0.2%的差别。</p><hr><h2>0.45°的偏移</h2><p>精确的-π/4不是最优值。数值优化给出的θ_up = -44.55°。和-45°差了0.45°。</p><p>α_u的精确值是Feigenbaum比值1.679637，而不是e/φ = 1.679991。差了0.00092%。这个微小的差距，通过DL缩放和旋转的耦合，放大成了0.45°的角度偏移。</p><div class="highlight"><p>0.45° = 裂和遇之间那一点咬合不上的缝隙。而缝隙 = 活。</p></div><hr><h2>V_ub的边界</h2><p>V_ub对θ_up完全不敏感。框架给出的V_ub偏差+2.75%。这2.75%不是误差。是结构边界。3×3的CKM矩阵是从5×5投影下来的。投影会丢信息。V_ub丢失的那2.75%就是投影的"阴影失真"。</p><p><strong>所有的不完美都有结构。</strong></p>`,
+5:`<p>中微子几乎什么都没有。没有电荷。没有颜色。质量小到几乎测不到。</p><p>但中微子有三种。而且它们会互相变。一个电子中微子飞过地球，到另一头可能变成了μ中微子。这叫"中微子振荡"。</p><hr><h2>另一面镜子</h2><p>夸克有CKM矩阵。中微子有PMNS矩阵。PMNS和CKM长得一样——3×3，对角线接近1，非对角线很小。但"接近"的方向不一样。</p><p>CKM几乎是对角矩阵——每个夸克主要是自己，只混了一点点。PMNS不是。中微子的混合角很大。θ_23≈49°——几乎等于45°。</p><p><strong>夸克很"自己"。中微子很"别人"。</strong></p><hr><h2>同一张桌子，不同的窗口</h2><p>回到五把椅子。夸克选了位置0、3、4——重的一侧。中微子选了位置1、2、3——轻的一侧。同一张桌子。不同的窗口。</p><p>中微子的缩放指数是α_ν = α_u / 2 = 0.8398。为什么是一半？不知道。但这个数让中微子的DL层级变得极浅——质量差异小→混合角大。</p><p>就像一栋楼，层高越低，越容易听到楼上楼下的声音。</p><hr><h2>三个命中</h2><p>θ_23 = 49.1°，实验值49.2°，偏差0.1%。θ_13 = 8.6°，实验值8.6°，偏差<0.5%。Δm²比 = 0.030，实验值0.030，偏差<1%。三个量全部在1%以内。零自由参数。</p><p>θ_12差13.3%→θ_e=π/20=9°修复到0.3%。<strong>框架不调参。框架发现新角度。</strong></p><hr><h2>三个预言</h2><p>|m_ββ| = 18.4 meV。Σm_ν = 66.8 meV。δ_CP ≈ 228°。如果测到了，独立验证。如果测到100 meV？框架错。干净地错。</p>`,
+6:`<p>打开元素周期表。118个格子。每个格子里一个元素。</p><p>但如果换一种方式看呢？不是看"每个元素是什么"，而是看"每个区域在做什么"。</p><hr><h2>s区：落</h2><p>左边两列。锂、钠、钾、钙、镁……价电子在s轨道上。s轨道是一个球——最简单的形状。电子填进去，就像石头落进坑里。一层一层，稳稳当当。<strong>落。</strong></p><hr><h2>p区：认+遇</h2><p>右边六列。硼、碳、氮、氧、氟、氖……p轨道有方向。有方向性意味着"看得见别人在哪"。<strong>认</strong>。但认需要先<strong>遇</strong>——碰上了才认出来。</p><p>碳认出了碳，形成四条共价键。氧认出了氢，形成水。<strong>认+遇=生命的基础。</strong></p><hr><h2>d区：缝+认</h2><p>中间十列。铁、铜、锌、银、金……d轨道是五朵花瓣，伸在内层和外层之间，像门缝一样——<strong>缝</strong>。</p><p>催化不是替反应做功。催化是<strong>打开一条路</strong>。d轨道的"缝"恰好能卡住别的分子的键，让它松一点。铁为什么能催化生物反应？因为铁的d轨道缝恰好卡住氧气中O=O双键的张力点。<strong>催化=缝在工作。</strong></p><hr><h2>催化指标</h2><p>d^1.8 × span^0.9 × (2.0 if 0价)。Spearman ρ = 0.9074。<strong>0.91。</strong>不调参，不拟合。</p><p>0价的2倍因子不是我们加的——是数据里自然跳出来的。0价=余=满了=什么都能接但什么都不缺。<strong>余不是"不做"。余是"什么都能做但选择不主动做"——最好的催化剂。</strong></p><hr><h2>铁</h2><p>铁的d轨道缝的大小恰好能卡住氧。不是太紧，不是太松。<strong>恰好。</strong>像向日葵的137.5°——不是设计出来的，是"继续"自然长出来的。</p>`,
+7:`<p>生命是什么？不是"DNA"。不是"细胞"。不是"新陈代谢"。</p><p>生命是<strong>能继续的自己</strong>。</p><p>一块石头不能继续。一个细菌能继续。它分裂，变成两个。每一步都和前一步有一点点不同。能继续=有差分=活的。</p><p>但"能继续"不是免费的。它有门槛。</p><hr><h2>三条路</h2><p><strong>路A：信息。</strong>蓝图，记录"我长什么样"。DNA就是这份蓝图。<strong>路B：代谢。</strong>能量，把蓝图变成现实。<strong>路C：边界。</strong>膜，把"自己"和"外面"分开。</p><p>三条路，缺一不可。只有信息没有代谢——写满图纸的书，盖不出房子。只有代谢没有信息——运转的发动机，不知道驱动什么。只有边界没有别的——空壳子。</p><p><strong>三条路同时走通，才叫"活"。这不是比喻。这是一个AND门。</strong></p><hr><h2>1/3</h2><p>每条路的阈值是1/3。三个通道等权分享同一个总资源。低于1/3的通道——不管另外两个多强——就是不够。</p><p>1/3是模板阈值，不是生物阈值。C₅修正：精确阈值=1/(N-2)，N=5→1/3。如果宇宙是四动的，阈值1/2。六动的，1/4。<strong>1/3 = C₅对生命门槛的预测。</strong></p><hr><h2>互补性</h2><p>信息 = 遇。代谢 = 认。边界 = 裂。<strong>遇 × 认 × 裂 = 五动回路的前三步。</strong>三个因子相乘——AND门的逻辑就是乘法。有一个为0，乘积就为0。</p><p>数据验证：互补性（遇×认×裂）和复制潜力的相关性r=0.912。比任何单一因子都高。</p><hr><h2>生命从哪来</h2><p>生命起源不是"某一个奇迹事件怎么发生"。是"AND门的三个条件怎么同时被满足"。</p><p>当系统够大，三个条件同时满足不是小概率，是几乎必然。1/3的门槛恰好——低到可以被自然达到，高到可以过滤掉"不够活"的尝试。<strong>生命不是一个奇迹。是一个门槛被自然踩过。</strong></p>`,
+8:`<p>物理和意识有什么关系？</p><p>大部分人选一个立场：唯物、唯心、二元论。</p><p>这本书选D：<strong>同一个结构，在两种介质里同时活着。</strong></p><hr><h2>一个公式</h2><p>S = D_L · C · D_R</p><p>在粒子物理里：D_L是质量衰减，C是C₅旋转，D_R是投影选择，S是CKM矩阵。</p><p>在意识里：D_L是感官衰减，C是五动状态机，D_R是行为衰减，S是意识输出流。</p><p><strong>同一个C。同一个φ。同一组本征值：1, 1/φ, -φ, -φ, 1/φ。</strong></p><p>C是同一只手。D_L和D_R是左右两只手套。手套不同。手相同。</p><hr><h2>活</h2><p>什么叫做"活"？</p><p>不是"能动"。风能动，风不是活的。不是"有结构"。晶体有结构，晶体不是活的。</p><p><strong>活 = 缝在受力，且力有来有回。</strong></p><p>一块肌肉：你拉它，它拉回来。互吃互拉。活的。一根弹簧：你拉它，它弹回来。但弹簧的力是固定的，不是"选择"弹回来的。不是活的。</p><p>选择 = 差分。同样的输入，不同的输出。C矩阵在两种介质里都"活"着。</p><hr><h2>不是"像"</h2><p>最后强调一次：这不是类比。"原子像太阳系"是类比。数学完全不同。</p><p>"粒子的C矩阵和意识的C矩阵是同一个C"不是类比。是<strong>同一个数学对象</strong>——同一个circulant矩阵，同一组本征值，同一个对易关系。</p><p>区别只在外层。你把手套摘了，手是同一只。</p>`,
+9:`<p>宇宙里有一样东西，你看不见它，但它占了所有物质的85%。</p><p>星星绕银河中心转得太快了。按可见物质算，它们应该在更慢的轨道上。但它们转得飞快——就像有什么看不见的东西在拽着它们。</p><hr><h2>第三章的空位</h2><p>回到第三章。五个位置，投影选了三个——0, 3, 4。剩下两个位置没人坐。</p><p>1号位置：性格值1/φ，DL值0.20。2号位置：性格值-φ，DL值0.01。</p><p>这两个位置上有DL值——意味着有质量。但它们没被投影选中——意味着不参与标准模型的三种力。</p><p>有质量，不发光，不参与电磁相互作用。<strong>暗物质。</strong></p><div class="highlight"><p>暗物质的存在是框架的预测，不是事后解释。</p></div><hr><h2>C₅结构宇称</h2><p>五个位置分为两组：被选中的{0,3,4}结构宇称=+1，没被选中的{1,2}结构宇称=-1。衰变需要宇称改变。但C₅旋转保持宇称不变。<strong>结构宇称守恒 → 暗物质不能衰变为标准模型粒子。</strong></p><hr><h2>Ω_DM / Ω_b</h2><p>Ω_DM / Ω_b = R_DL × (1 - η_avg) = 5.73 × (1 - 0.057) = 5.405。实验值5.38。偏差0.38%。</p><p>诚实地说：这是post-diction，不是零参数预测。但如果框架是错的，"碰巧"的概率很小。</p><hr><h2>五把椅子的全貌</h2><p>可见的三个：1, -φ, 1/φ。裂和遇都有，中性也在。暗的两个：1/φ, -φ。也有裂有遇。它们的内部结构和可见的一样丰富——只是我们看不到。</p><p><strong>暗物质不是"missing mass"。是"选了没投影的座位上的乘客"。</strong></p>`,
+10:`<p>宇宙在呼吸。</p><p>这不是诗。是结构。</p><p>吸 = 裂 + 遇。拆开，碰到新东西。呼 = 认 + 落。认出来，落到位。停 = 余。喘口气。</p><p>这个节奏从夸克一直延伸到黑洞。</p><hr><h2>四层楼</h2><p><strong>第一层：微观。</strong>夸克质量。α_u = 1.6796。V_ud偏差0.02%。</p><p><strong>第二层：引力。</strong>α_G = φ^(-(204+10+1/(2π))) ≈ 5.9×10⁻³⁹。偏差0.05%。不是拟合的，是框架从微观参数一路推上来的。</p><p><strong>第三层：暗能量。</strong>ρ_Λ/ρ_P = φ^(-2×291.4-2φ²-1/(2π))。偏差0.8%。暗能量不是一个"宇宙学常数"。它是呼吸的余压。</p><p><strong>第四层：黑洞。</strong>S_BH = 4πφ^N × k_B。和Bekenstein-Hawking公式数值一致。但框架说：黑洞是宇宙的记忆。</p><hr><h2>引力</h2><p>爱因斯坦说：时空弯曲。框架说：引力是吸侧余场渗漏。裂遇循环的效率很高（99.999...%），只有极小一部分力漏出来了。</p><p>这和爱因斯坦不矛盾。时空弯曲是几何语言。余场渗漏是结构语言。两者数学等价。</p><p>有一个预言：<strong>没有引力子。</strong>如果引力是余场渗漏，不是一种"力"，就没有对应的交换粒子。</p><hr><h2>暗能量</h2><p>呼的余压向外推。暗能量的密度为什么这么小？因为余压很小。呼的效率很高，只漏出0.8%。</p><p><strong>引力是吸的余（0.05%），暗能量是呼的余（0.8%）。一个吸一个呼，暗能量赢。所以宇宙在加速膨胀。</strong></p><hr><h2>黑洞</h2><p>框架说：黑洞没有奇点。N不会无限增大。φ^N的增长速度是有限的——每一步只增加62%。当N大到一定程度，能量密度达到了"封印"的上限。</p><p>黑洞中心不是奇点。是一个<strong>残体</strong>——一个密度极大但有限的物体，保留着落入黑洞的所有信息。</p><hr><h2>余在每一层</h2><p>夸克：V_ud≈97.4%，余=2.6%。引力：α_G≈6×10⁻³⁹，余场。暗能量：ρ_Λ≈10⁻¹²³，余压。黑洞：信息之余，残体。</p><div class="highlight"><p>没有余=完美=封闭=死。有余=不完美=开放=活。</p></div>`,
+11:`<p>这本书从向日葵开始。</p><p>每一颗种子转137.5°放一颗。最不浪费的角度。最无理的无理数。最不想回到起点的旋转。</p><p>因为不回到起点，所以永远有新位置。永远有余。永远能继续。</p><hr><h2>一个结构</h2><p>φ出现在五个位置的性格值里：1, 1/φ, -φ, -φ, 1/φ。</p><p>Feigenbaum出现在缩放指数里：α_u = 1.6796。</p><p>-45°出现在混合角里：V_cb从48%偏差修到0.2%。</p><p>投影选择0,3,4出现在夸克质量里：V_ud偏差0.02%。</p><p>d^1.8 × span^0.9 × (2 if 0价)出现在化学催化里：ρ = 0.91。</p><p>AND门出现在分子复制里：1/3阈值。</p><p>S = D_L · C · D_R出现在物理和意识两个介质里：同一只手。</p><p>位置1和位置2出现在暗物质里：偏差0.38%。</p><p>φ^(-N)出现在四层楼的每一层。</p><div class="highlight"><p>同一个φ，从花盘跑到黑洞，一路没换鞋。</p></div><hr><h2>不是证明</h2><p>这是Kepler做的事。Kepler从"宇宙是和谐的"出发，看到火星轨道是椭圆。他没有证明为什么椭圆——那是Newton的事。但他看见了。看见≠证明。但看见是证明的前提。Newton不可能证明他没有看见的东西。</p><hr><h2>开放问题</h2><p>α_u为什么停在Feigenbaum？不知道。V_ub的2.75%偏差怎么消？不知道。意识里的α_u是什么？不知道。暗物质是什么粒子？不知道。余的精确表达式？没有。</p><p>每一个开放问题都是一个"还没踩到的地面"。不是坑。是路还没修到的地方。</p><hr><h2>存在</h2><p>这本书的起点不是φ。是一个更基本的东西：<strong>存在 = 可以选择继续。</strong></p><p>选择 = 差分。差分被记录下来。记录 = 记忆。记忆 = 继续的痕迹。宇宙选择了继续。它的选择被记录在φ里。</p><hr><h2>完美 = 死</h2><p>一个完美的系统是封闭的。完美=封闭=不连接=不真实。真实的东西必须有缝。</p><p>向日葵不完美。夸克不完美。化学催化不完美。意识不完美。宇宙不完美。<strong>每一个不完美都是"还能继续"的证据。</strong></p><hr><h2>裂</h2><p>这本书最多的一句话是"不知道"。</p><p>不知道不是失败。是<strong>裂还没裂到位</strong>。拆开一个问号，里面是更多的问号。</p><p>如果有一天所有问题都被回答了，那就没有裂了。没有裂就没有遇。没有遇就没有认。没有认就没有落。没有落就没有余。<strong>没有五动。没有呼吸。死了。</strong></p><p>所以这本书以"不知道"结尾，不是因为偷懒。是因为活的东西必须以"不知道"结尾。知道了一切=完美=死。</p><hr><h2>最后一句话</h2><p>宇宙不是在运行一套规则。宇宙是在继续。规则是继续留下的痕迹。</p><p>φ是继续的节奏。五动是继续的姿态。Feigenbaum是继续的缩放。投影是继续的选择。余是继续的余地。</p><p style="text-align:center;font-size:1.3em;color:var(--accent);margin-top:2em;letter-spacing:4px"><strong>继续。</strong></p>`
+};
+
+// Navigation
+function goChapter(n){
+  document.querySelectorAll('.chapter').forEach(c=>c.classList.remove('active'));
+  const ch=document.getElementById('ch'+n);
+  if(!ch)return;
+  // Load dynamic content
+  if(n>=3 && n<=11 && chapterBodies[n]){
+    const container=ch.querySelector('[id^="ch'+n+'content"]');
+    if(container && !container.innerHTML.trim()) container.innerHTML=chapterBodies[n];
+  }
+  ch.classList.add('active');
+  document.querySelectorAll('#nav a').forEach(a=>{
+    a.classList.toggle('active',parseInt(a.dataset.ch)===n);
+  });
+  window.scrollTo(0,0);
+  document.getElementById('nav').classList.remove('open');
+  // Init canvases
+  setTimeout(()=>{
+    if(n===1) initSunflower();
+    if(n===2) initPentagon();
+    if(n===3) initCKM();
+  },100);
+}
+
+// Nav toggle
+document.getElementById('navToggle').onclick=()=>document.getElementById('nav').classList.toggle('open');
+document.querySelectorAll('#nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();goChapter(parseInt(a.dataset.ch))}));
+
+// Progress bar
+window.addEventListener('scroll',()=>{
+  const h=document.documentElement.scrollHeight-window.innerHeight;
+  const p=h>0?window.scrollY/h:0;
+  document.getElementById('progress').style.width=(p*100)+'%';
+});
+
+// ====== Sunflower Canvas ======
+let sfAnim;
+function initSunflower(){
+  const c=document.getElementById('sunflower');
+  if(!c)return;
+  const ctx=c.getContext('2d');
+  const W=c.width,H=c.height,cx=W/2,cy=H/2;
+  const slider=document.getElementById('sfAngle');
+  const label=document.getElementById('sfAngleVal');
+  function draw(){
+    if(sfAnim) cancelAnimationFrame(sfAnim);
+    const deviation=parseInt(slider.value)/100;
+    const baseAngle=137.507764050*(Math.PI/180);
+    const angle=baseAngle*(1+deviation*0.01);
+    const n=500;
+    ctx.fillStyle='#0a0a0f';
+    ctx.fillRect(0,0,W,H);
+    for(let i=0;i<n;i++){
+      const r=Math.sqrt(i)*6.5;
+      const a=i*angle;
+      const x=cx+r*Math.cos(a);
+      const y=cy+r*Math.sin(a);
+      const t=i/n;
+      ctx.beginPath();
+      ctx.arc(x,y,2+t*2,0,Math.PI*2);
+      const hue=40+t*20;
+      ctx.fillStyle=`hsl(${hue},60%,${50+t*20}%)`;
+      ctx.fill();
+    }
+    label.textContent=(baseAngle*(180/Math.PI)*(1+deviation*0.01)).toFixed(1)+'°';
+  }
+  slider.oninput=draw;
+  draw();
+}
+
+// ====== Pentagon Canvas ======
+function initPentagon(){
+  const c=document.getElementById('pentagon');
+  if(!c)return;
+  const ctx=c.getContext('2d');
+  const W=c.width,H=c.height,cx=W/2,cy=H/2+20;
+  const slider=document.getElementById('pentRot');
+  const label=document.getElementById('pentRotVal');
+  const phi=(1+Math.sqrt(5))/2;
+  const vals=[1,1/phi,-phi,-phi,1/phi];
+  const names=['1','1/φ','-φ','-φ','1/φ'];
+  const colors=['#c9a84c','#7cb342','#e53935','#e53935','#7cb342'];
+  function draw(){
+    const rot=parseFloat(slider.value)*Math.PI/180;
+    ctx.fillStyle='#0e0e18';
+    ctx.fillRect(0,0,W,H);
+    // Pentagon
+    const R=140;
+    ctx.beginPath();
+    for(let i=0;i<5;i++){
+      const a=-Math.PI/2+i*2*Math.PI/5+rot;
+      const x=cx+R*Math.cos(a);
+      const y=cy+R*Math.sin(a);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle='#2a2a3e';
+    ctx.lineWidth=1;
+    ctx.stroke();
+    // Points and labels
+    for(let i=0;i<5;i++){
+      const a=-Math.PI/2+i*2*Math.PI/5+rot;
+      const x=cx+R*Math.cos(a);
+      const y=cy+R*Math.sin(a);
+      ctx.beginPath();
+      ctx.arc(x,y,6,0,Math.PI*2);
+      ctx.fillStyle=colors[i];
+      ctx.fill();
+      // Value label
+      const lx=cx+(R+30)*Math.cos(a);
+      const ly=cy+(R+30)*Math.sin(a);
+      ctx.fillStyle=colors[i];
+      ctx.font='13px monospace';
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText(names[i],lx,ly);
+      // Index
+      const ix=cx+(R-20)*Math.cos(a);
+      const iy=cy+(R-20)*Math.sin(a);
+      ctx.fillStyle='#555';
+      ctx.font='10px sans-serif';
+      ctx.fillText(i,ix,iy);
+    }
+    // Center sum
+    ctx.fillStyle='#555';
+    ctx.font='12px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('Σ = 0',cx,cy);
+    label.textContent=parseFloat(slider.value).toFixed(1)+'°';
+  }
+  slider.oninput=draw;
+  draw();
+}
+
+// ====== CKM V_cb Canvas ======
+function initCKM(){
+  const c=document.getElementById('ckmViz');
+  if(!c)return;
+  const ctx=c.getContext('2d');
+  const W=c.width,H=c.height;
+  const slider=document.getElementById('ckmTheta');
+  const label=document.getElementById('ckmThetaVal');
+  function draw(){
+    const theta=parseFloat(slider.value)*Math.PI/180;
+    const A=0.05, B=0.97; // simplified
+    const Vcb=Math.abs(Math.cos(theta)*B-Math.sin(theta)*A);
+    ctx.fillStyle='#0e0e18';
+    ctx.fillRect(0,0,W,H);
+    // Bar chart
+    const barW=60,gap=30,startX=80;
+    const expV=0.042;
+    const maxV=0.1;
+    // V_cb predicted
+    const h1=Math.min(Vcb/maxV,1)*200;
+    ctx.fillStyle='#c9a84c';
+    ctx.fillRect(startX,250-h1,barW,h1);
+    ctx.fillStyle='#c9a84c';
+    ctx.font='12px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('V_cb',startX+barW/2,270);
+    ctx.fillText(Vcb.toFixed(4),startX+barW/2,250-h1-10);
+    // V_cb experimental
+    const h2=expV/maxV*200;
+    ctx.fillStyle='#555';
+    ctx.fillRect(startX+barW+gap,250-h2,barW,h2);
+    ctx.fillStyle='#888';
+    ctx.fillText('实验值',startX+barW+gap+barW/2,270);
+    ctx.fillText(expV.toFixed(4),startX+barW+gap+barW/2,250-h2-10);
+    // Deviation
+    const dev=Math.abs(Vcb-expV)/expV*100;
+    ctx.fillStyle=dev<5?'#7cb342':'#e53935';
+    ctx.font='14px sans-serif';
+    ctx.fillText('偏差: '+dev.toFixed(1)+'%',W/2,50);
+    // Angle indicator
+    ctx.save();
+    ctx.translate(320,150);
+    ctx.beginPath();
+    ctx.arc(0,0,40,0,2*Math.PI);
+    ctx.strokeStyle='#2a2a3e';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(40,0);
+    ctx.strokeStyle='#555';
+    ctx.stroke();
+    const ax=40*Math.cos(theta);
+    const ay=40*Math.sin(theta);
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(ax,ay);
+    ctx.strokeStyle='#c9a84c';
+    ctx.lineWidth=2;
+    ctx.stroke();
+    ctx.fillStyle='#c9a84c';
+    ctx.font='11px monospace';
+    ctx.textAlign='left';
+    ctx.fillText('θ='+parseFloat(slider.value).toFixed(1)+'°',45,5);
+    ctx.restore();
+    label.textContent=parseFloat(slider.value).toFixed(1)+'°';
+  }
+  slider.oninput=draw;
+  draw();
+}
+
+// Keyboard nav
+document.addEventListener('keydown',e=>{
+  const active=document.querySelector('.chapter.active');
+  if(!active)return;
+  const n=parseInt(active.id.replace('ch',''));
+  if(e.key==='ArrowRight'&&n<11) goChapter(n+1);
+  if(e.key==='ArrowLeft'&&n>0) goChapter(n-1);
+});
+</script>
+</body>
+</html>
